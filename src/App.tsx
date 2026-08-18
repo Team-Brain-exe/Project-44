@@ -1090,6 +1090,9 @@ export default function App() {
   const [mlRunning, setMlRunning] = useState(false)
   const [expandedMLId, setExpandedMLId] = useState<number | null>(null)
 
+  // Sidebar collapse state
+  const [navCollapsed, setNavCollapsed] = useState(false)
+
   // Claude AI state
   const [aiAnalysis, setAiAnalysis] = useState("")
   const [aiLoading, setAiLoading] = useState(false)
@@ -1253,17 +1256,27 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
 
       {/* Body */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <nav style={{ width: 48, borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "center", padding: "12px 0", gap: 4, flexShrink: 0, background: "var(--panel)" }}>
+        <nav style={{ width: navCollapsed ? 48 : 180, borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: "12px 0", gap: 4, flexShrink: 0, background: "var(--panel)", transition: "width 0.15s" }}>
+          <button
+            onClick={() => setNavCollapsed(c => !c)}
+            title={navCollapsed ? "Expand" : "Collapse"}
+            style={{ alignSelf: navCollapsed ? "center" : "flex-end", marginRight: navCollapsed ? 0 : 8, marginBottom: 6, width: 22, height: 22, borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--text-3)", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            {navCollapsed ? "»" : "«"}
+          </button>
           {navItems.map(item => (
             <button
               key={item.id}
               title={item.label}
               onClick={() => setPage(item.id)}
-              style={{ position: "relative", width: 36, height: 36, borderRadius: 6, border: "none", cursor: "pointer", background: page === item.id ? "var(--primary-dim)" : "transparent", color: page === item.id ? "var(--primary)" : "var(--text-3)", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}
+              style={{ position: "relative", width: navCollapsed ? 36 : "calc(100% - 16px)", margin: navCollapsed ? 0 : "0 8px", height: 36, borderRadius: 6, border: "none", cursor: "pointer", background: page === item.id ? "var(--primary-dim)" : "transparent", color: page === item.id ? "var(--primary)" : "var(--text-3)", fontSize: 14, display: "flex", alignItems: "center", justifyContent: navCollapsed ? "center" : "flex-start", gap: 10, padding: navCollapsed ? 0 : "0 10px", transition: "all 0.15s" }}
             >
-              {item.icon}
+              <span>{item.icon}</span>
+              {!navCollapsed && (
+                <span style={{ fontSize: 11, fontWeight: 500, fontFamily: "Outfit, sans-serif" }}>{item.label}</span>
+              )}
               {item.badge != null && item.badge > 0 && (
-                <span style={{ position: "absolute", top: 4, right: 4, width: 14, height: 14, borderRadius: "50%", background: "#ef4444", fontSize: 8, fontWeight: 700, fontFamily: "DM Mono, monospace", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ position: navCollapsed ? "absolute" : "static", top: navCollapsed ? 4 : undefined, right: navCollapsed ? 4 : undefined, marginLeft: navCollapsed ? 0 : "auto", width: 14, height: 14, borderRadius: "50%", background: "#ef4444", fontSize: 8, fontWeight: 700, fontFamily: "DM Mono, monospace", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {item.badge}
                 </span>
               )}
