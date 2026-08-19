@@ -23,7 +23,7 @@ joblib==1.5.3
 Mako==1.4.1
 MarkupSafe==3.0.3
 multidict==6.7.1
-narwhals
+narwhals==2.24.0
 numpy==2.5.2
 nvidia-nccl-cu13==2.31.2
 packaging==26.3
