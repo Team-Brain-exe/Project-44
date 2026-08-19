@@ -1,13 +1,3 @@
-<<<<<<< HEAD
-fastapi
-uvicorn[standard]
-sqlalchemy
-pydantic
-pydantic-settings
-twilio
-pytest
-httpx
-=======
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.3
 aiohttp-retry==2.9.1
@@ -33,7 +23,7 @@ joblib==1.5.3
 Mako==1.4.1
 MarkupSafe==3.0.3
 multidict==6.7.1
-narwhals==2.24.0
+narwhals==2.5.2
 numpy==2.5.2
 nvidia-nccl-cu13==2.31.2
 packaging==26.3
@@ -66,4 +56,3 @@ watchfiles==1.2.0
 websockets==17.0.1
 xgboost==3.4.1
 yarl==1.24.5
->>>>>>> 83b7bc8fcd52a7b4cff61f250433fa8d45fb80c9
