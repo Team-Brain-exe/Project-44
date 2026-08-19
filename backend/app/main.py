@@ -28,8 +28,8 @@ def health_check():
 app.include_router(ml.router)
 
 # Add more routers here as they're built:
-# from app.routers import alerts, routes, reroutes, ports, notifications
-# app.include_router(alerts.router)
+from app.routers import alerts, routes, reroutes, ports, notifications
+app.include_router(alerts.router)
 # app.include_router(routes.router)
 # app.include_router(reroutes.router)
 # app.include_router(ports.router)
