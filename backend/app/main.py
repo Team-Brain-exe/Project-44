@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.models import alert, route, reroute, port, user_device  # noqa: F401 — import so tables register with Base
-from app.routers import ml
+from app.models import alert, route, reroute, port, user_device  # noqa: F401
+from app.routers import ml, alerts, routes
 
 app = FastAPI(title="Project44 API")
 
@@ -15,8 +15,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Creates all tables defined in app/models/*.py if they don't already exist.
-# Safe to run every time the server starts — it won't touch tables that already exist.
 Base.metadata.create_all(bind=engine)
 
 
@@ -26,11 +24,13 @@ def health_check():
 
 
 app.include_router(ml.router)
-
-# Add more routers here as they're built:
-from app.routers import alerts, routes, reroutes, ports, notifications
 app.include_router(alerts.router)
 app.include_router(routes.router)
+
+# Uncomment each pair below as that router is built and tested:
+# from app.routers import reroutes
 # app.include_router(reroutes.router)
+# from app.routers import ports
 # app.include_router(ports.router)
+# from app.routers import notifications
 # app.include_router(notifications.router)
