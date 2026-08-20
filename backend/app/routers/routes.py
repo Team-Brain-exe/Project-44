@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.route import Route
-from app.schemas.route import RouteOut, RouteUpdate
+from app.schemas.route import RouteOut, RouteCreate, RouteUpdate
 
 router = APIRouter(prefix="/routes", tags=["routes"])
 
@@ -31,3 +31,12 @@ def update_route(route_id: int, update: RouteUpdate, db: Session = Depends(get_d
     db.commit()
     db.refresh(route)
     return route
+
+
+@router.post("", response_model=RouteOut)
+def create_route(route: RouteCreate, db: Session = Depends(get_db)):
+    db_route = Route(**route.model_dump())
+    db.add(db_route)
+    db.commit()
+    db.refresh(db_route)
+    return db_route
