@@ -2,7 +2,7 @@
 // shapes into the types App.tsx already expects. This is the one place
 // that should know both shapes — nothing else in the frontend should.
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
 
 // ─── Backend response shapes (mirrors app/schemas/*.py) ──────────────────────
 

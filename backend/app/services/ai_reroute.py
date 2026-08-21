@@ -1,24 +1,25 @@
 """
 Generates real, model-written reasoning for reroute suggestions using
-Claude, replacing the static TOP_FEATURE_REASONS lookup table.
+Gemini, replacing the static TOP_FEATURE_REASONS lookup table.
 
 Falls back to a plain rule-based sentence if no API key is configured
 or the API call fails, so the feature degrades gracefully rather than
 breaking reroute generation entirely.
 """
 
-from anthropic import Anthropic
+from google import genai
 from app.config import settings
 
-_client: Anthropic | None = None
+_client: genai.Client | None = None
+_MODEL = "gemini-2.5-flash"
 
 
-def _get_client() -> Anthropic | None:
+def _get_client() -> genai.Client | None:
     global _client
-    if not settings.anthropic_api_key:
+    if not settings.gemini_api_key:
         return None
     if _client is None:
-        _client = Anthropic(api_key=settings.anthropic_api_key)
+        _client = genai.Client(api_key=settings.gemini_api_key)
     return _client
 
 
@@ -44,13 +45,12 @@ Active alerts on this route:
 Reply with ONLY the one sentence, no preamble, no quotes."""
 
     try:
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=80,
-            messages=[{"role": "user", "content": prompt}],
+        response = client.models.generate_content(
+            model=_MODEL,
+            contents=prompt,
         )
-        text = response.content[0].text.strip()
+        text = (response.text or "").strip()
         return text if text else None
     except Exception as e:
-        print(f"[ai_reroute] Claude call failed: {e}")
+        print(f"[ai_reroute] Gemini call failed: {e}")
         return None

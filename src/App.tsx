@@ -9,6 +9,7 @@ import {
   generateReroutesApi,
   adaptReroute,
   notifyTeamApi,
+  BACKEND_URL,
 } from "./services/project44"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -157,29 +158,25 @@ function linearRegression(xs: number[], ys: number[]) {
   return { slope, intercept, r2: ssTot > 0 ? 1 - ssRes / ssTot : 1 }
 }
 
-async function callClaude(prompt: string): Promise<string> {
-  const key = (import.meta as any).env?.VITE_ANTHROPIC_API_KEY
-  if (!key) throw new Error("NO_KEY")
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+// Calls the backend's /ai/risk-analysis endpoint, which runs the Gemini
+// call server-side. The API key never touches the browser bundle.
+async function callRiskAnalysis(payload: {
+  alerts: { severity: string; type: string; location: string; summary: string }[]
+  top_location?: string
+  top_score?: number
+  top_confidence?: number
+}): Promise<string> {
+  const res = await fetch(`${BACKEND_URL}/ai/risk-analysis`, {
     method: "POST",
-    headers: {
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 320,
-      messages: [{ role: "user", content: prompt }],
-    }),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error((err as any)?.error?.message ?? `HTTP ${res.status}`)
+    throw new Error((err as any)?.detail ?? `HTTP ${res.status}`)
   }
   const data = await res.json()
-  return (data.content?.[0]?.text as string) ?? "No response."
+  return (data.text as string) ?? "No response."
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -1760,12 +1757,12 @@ function DashboardView({
             })}
         </div>
 
-        {/* Claude AI Analysis */}
+        {/* Gemini AI Analysis */}
         <div style={{ borderTop: "1px solid var(--border)", padding: "10px 14px" }}>
           {aiAnalysis ? (
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: "#22c55e", letterSpacing: "0.08em" }}>✦ CLAUDE AI · HAIKU</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#22c55e", letterSpacing: "0.08em" }}>✦ GEMINI AI · FLASH</span>
                 <button
                   onClick={onGenerateAI}
                   style={{
@@ -1814,7 +1811,7 @@ function DashboardView({
 
         <div style={{ borderTop: "1px solid var(--border)", padding: "5px 14px" }}>
           <span className="mono" style={{ fontSize: 7, color: "var(--text-3)" }}>
-            sigmoid risk · z-score anomaly · LR forecast · claude haiku
+            sigmoid risk · z-score anomaly · LR forecast · gemini flash
           </span>
         </div>
       </div>
@@ -1934,7 +1931,7 @@ export default function App() {
   // Sidebar collapse state
   const [navCollapsed, setNavCollapsed] = useState(false)
 
-  // Claude AI state
+  // Gemini AI state
   const [aiAnalysis, setAiAnalysis] = useState("")
   const [aiLoading, setAiLoading] = useState(false)
 
@@ -2008,26 +2005,16 @@ export default function App() {
     const topEntry = ranked[0]
     const topAlert = topEntry ? live.find(a => a.id === Number(topEntry[0])) : live[0]
 
-    const prompt = `You are UNILOG, a supply chain intelligence system for Indian maritime logistics.
-
-Active disruptions (${live.length} events):
-${live.map(a => `- [${a.severity.toUpperCase()}] ${a.type} at ${a.location}: ${a.summary}`).join("\n")}
-
-${topAlert && topEntry ? `Highest ML risk: "${topAlert.location}" scored ${topEntry[1].score}/100 (${topEntry[1].confidence}% confidence).` : ""}
-
-Context: India routes 95% of trade by sea. Red Sea crisis → 8× freight spike. Exports contracted 9.3% Aug 2024.
-
-Write 2–3 concise operational sentences for Indian freight operators. Be specific and direct.`
-
     try {
-      const text = await callClaude(prompt)
+      const text = await callRiskAnalysis({
+        alerts: live.map(a => ({ severity: a.severity, type: a.type, location: a.location, summary: a.summary })),
+        top_location: topAlert && topEntry ? topAlert.location : undefined,
+        top_score: topAlert && topEntry ? topEntry[1].score : undefined,
+        top_confidence: topAlert && topEntry ? topEntry[1].confidence : undefined,
+      })
       setAiAnalysis(text)
     } catch (e: any) {
-      if (e.message === "NO_KEY") {
-        setAiAnalysis("No API key configured. Add VITE_ANTHROPIC_API_KEY to enable live Claude AI analysis.")
-      } else {
-        setAiAnalysis(`Error: ${e.message}`)
-      }
+      setAiAnalysis(`Error: ${e.message}`)
     }
     setAiLoading(false)
   }
