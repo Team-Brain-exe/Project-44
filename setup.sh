@@ -22,10 +22,15 @@ echo ">> Installing frontend dependencies (pnpm)..."
 cd /workspaces/Project-44
 pnpm install
 
-echo ">> Writing frontend .env..."
-cat > .env << ENVEOF
+if [ ! -f ".env" ]; then
+  echo ">> Writing frontend .env (first time)..."
+  cat > .env << ENVEOF
 VITE_BACKEND_URL=${BACKEND_URL}
+VITE_ANTHROPIC_API_KEY=
 ENVEOF
+else
+  echo ">> Frontend .env already exists, leaving it untouched."
+fi
 
 # ---------- BACKEND ----------
 echo ""
@@ -41,16 +46,22 @@ source venv/bin/activate
 
 echo ">> Installing backend dependencies..."
 pip install --upgrade pip -q
-pip install -q fastapi "uvicorn[standard]" sqlalchemy alembic pydantic-settings scikit-learn xgboost pandas numpy joblib python-dotenv twilio pytest httpx
+pip install -q fastapi "uvicorn[standard]" sqlalchemy alembic pydantic-settings scikit-learn xgboost pandas numpy joblib python-dotenv requests anthropic pytest httpx
 pip freeze > requirements.txt
 
-echo ">> Writing backend .env..."
-cat > .env << ENVEOF
+if [ ! -f ".env" ]; then
+  echo ">> Writing backend .env (first time)..."
+  cat > .env << ENVEOF
 DATABASE_URL=sqlite:///./project44.db
 FAST2SMS_API_KEY=
+ANTHROPIC_API_KEY=
 ML_MODEL_PATH=app/ml/artifacts/model.pkl
 FRONTEND_URL=${FRONTEND_URL}
 ENVEOF
+  echo "   NOTE: Add your FAST2SMS_API_KEY and ANTHROPIC_API_KEY to backend/.env before using notifications/AI reasons."
+else
+  echo ">> Backend .env already exists, leaving it untouched (your API keys are safe)."
+fi
 
 # ---------- ML MODEL ----------
 if [ ! -f "app/ml/artifacts/model.pkl" ]; then
