@@ -1,25 +1,25 @@
 """
 Generates real, model-written reasoning for reroute suggestions using
-Gemini, replacing the static TOP_FEATURE_REASONS lookup table.
+Groq, replacing the static TOP_FEATURE_REASONS lookup table.
 
 Falls back to a plain rule-based sentence if no API key is configured
 or the API call fails, so the feature degrades gracefully rather than
 breaking reroute generation entirely.
 """
 
-from google import genai
+from groq import Groq
 from app.config import settings
 
-_client: genai.Client | None = None
-_MODEL = "gemini-2.5-flash"
+_client: Groq | None = None
+_MODEL = "llama-3.3-70b-versatile"
 
 
-def _get_client() -> genai.Client | None:
+def _get_client() -> Groq | None:
     global _client
-    if not settings.gemini_api_key:
+    if not settings.groq_api_key:
         return None
     if _client is None:
-        _client = genai.Client(api_key=settings.gemini_api_key)
+        _client = Groq(api_key=settings.groq_api_key)
     return _client
 
 
@@ -45,12 +45,13 @@ Active alerts on this route:
 Reply with ONLY the one sentence, no preamble, no quotes."""
 
     try:
-        response = client.models.generate_content(
+        response = client.chat.completions.create(
             model=_MODEL,
-            contents=prompt,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=100,
         )
-        text = (response.text or "").strip()
+        text = (response.choices[0].message.content or "").strip()
         return text if text else None
     except Exception as e:
-        print(f"[ai_reroute] Gemini call failed: {e}")
+        print(f"[ai_reroute] Groq call failed: {e}")
         return None

@@ -1,31 +1,30 @@
 """
-Server-side Gemini call backing the "ML Risk Engine" panel on the
+Server-side Groq call backing the "ML Risk Engine" panel on the
 dashboard. Runs on the backend so the API key never reaches the
-browser bundle (the frontend previously called Anthropic directly
-from client-side JS, which leaked the key).
+browser bundle.
 """
 
-from google import genai
+from groq import Groq
 from app.config import settings
 from app.schemas.ai_analysis import RiskAnalysisRequest
 
-_client: genai.Client | None = None
-_MODEL = "gemini-2.5-flash"
+_client: Groq | None = None
+_MODEL = "llama-3.3-70b-versatile"
 
 
-def _get_client() -> genai.Client | None:
+def _get_client() -> Groq | None:
     global _client
-    if not settings.gemini_api_key:
+    if not settings.groq_api_key:
         return None
     if _client is None:
-        _client = genai.Client(api_key=settings.gemini_api_key)
+        _client = Groq(api_key=settings.groq_api_key)
     return _client
 
 
 def generate_risk_analysis(req: RiskAnalysisRequest) -> str:
     client = _get_client()
     if client is None:
-        return "No API key configured. Set GEMINI_API_KEY on the backend to enable live AI analysis."
+        return "No API key configured. Set GROQ_API_KEY on the backend to enable live AI analysis."
 
     alert_lines = "\n".join(
         f"- [{a.severity.upper()}] {a.type} at {a.location}: {a.summary}"
@@ -43,15 +42,16 @@ Active disruptions ({len(req.alerts)} events):
 
 {top_line}
 
-Context: India routes 95% of trade by sea. Red Sea crisis → 8x freight spike. Exports contracted 9.3% Aug 2024.
+Context: India routes 95% of trade by sea. Red Sea crisis -> 8x freight spike. Exports contracted 9.3% Aug 2024.
 
 Write 2-3 concise operational sentences for Indian freight operators. Be specific and direct."""
 
     try:
-        response = client.models.generate_content(
+        response = client.chat.completions.create(
             model=_MODEL,
-            contents=prompt,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
         )
-        return (response.text or "No response.").strip()
+        return (response.choices[0].message.content or "No response.").strip()
     except Exception as e:
         return f"Error: {e}"

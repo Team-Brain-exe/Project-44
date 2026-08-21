@@ -1757,12 +1757,12 @@ function DashboardView({
             })}
         </div>
 
-        {/* Gemini AI Analysis */}
+        {/* Groq AI Analysis */}
         <div style={{ borderTop: "1px solid var(--border)", padding: "10px 14px" }}>
           {aiAnalysis ? (
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: "#22c55e", letterSpacing: "0.08em" }}>✦ GEMINI AI · FLASH</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#22c55e", letterSpacing: "0.08em" }}>✦ GROQ AI · LLAMA 3.3</span>
                 <button
                   onClick={onGenerateAI}
                   style={{
@@ -1811,7 +1811,7 @@ function DashboardView({
 
         <div style={{ borderTop: "1px solid var(--border)", padding: "5px 14px" }}>
           <span className="mono" style={{ fontSize: 7, color: "var(--text-3)" }}>
-            sigmoid risk · z-score anomaly · LR forecast · gemini flash
+            sigmoid risk · z-score anomaly · LR forecast · groq llama-3.3
           </span>
         </div>
       </div>

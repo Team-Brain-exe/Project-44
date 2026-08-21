@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     fast2sms_api_key: str = ""
     ml_model_path: str = "app/ml/artifacts/model.pkl"
     frontend_url: str = ""
-    gemini_api_key: str = ""
+    groq_api_key: str = ""
 
     class Config:
         env_file = ".env"
