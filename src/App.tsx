@@ -6,6 +6,9 @@ import {
   setRouteWatchedApi,
   applyRerouteApi,
   dismissRerouteApi,
+  generateReroutesApi,
+  adaptReroute,
+  notifyTeamApi,
 } from "./services/project44"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1034,7 +1037,7 @@ function RoutePlannerPage() {
   )
 }
 
-function AlertsPage({ alerts, onDismiss }: { alerts: AlertEvent[]; onDismiss: (id: number) => void }) {
+function AlertsPage({ alerts, onDismiss, onNotify }: { alerts: AlertEvent[]; onDismiss: (id: number) => void; onNotify: (id: number) => void }) {
   const [filter, setFilter] = useState<Severity | "all">("all")
   const filtered = filter === "all" ? alerts : alerts.filter(a => a.severity === filter)
 
@@ -1106,7 +1109,7 @@ function AlertsPage({ alerts, onDismiss }: { alerts: AlertEvent[]; onDismiss: (i
                 </span>
                 <SeverityBadge sev={a.severity} />
                 <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                  <Btn small>NOTIFY TEAM</Btn>
+                  <Btn small onClick={() => onNotify(a.id)}>NOTIFY TEAM</Btn>
                   <Btn small danger onClick={() => onDismiss(a.id)}>
                     DISMISS
                   </Btn>
@@ -1169,7 +1172,7 @@ function SettingsPage() {
               <div style={{ fontSize: 12, fontWeight: 500, textTransform: "capitalize", marginBottom: 2 }}>
                 {ch === "sms" ? "SMS" : ch.charAt(0).toUpperCase() + ch.slice(1)}
               </div>
-              <div style={{ fontSize: 10, color: "var(--text-3)" }}>{ch === "email" ? "rajesh@freightco.in" : "+91 98200 12345"}</div>
+              <div style={{ fontSize: 10, color: "var(--text-3)" }}>{ch === "email" ? "aparnadhiraj07@gmail.com" : "+91 73566 75700"}</div>
             </div>
             <div
               onClick={() => setNotif(n => ({ ...n, [ch]: !n[ch] }))}
@@ -1329,6 +1332,8 @@ function DashboardView({
   onToggleWatch,
   onApplyReroute,
   onDismissReroute,
+  onGenerateReroutes,
+  generatingReroutes,
   mlScores,
   mlRunning,
   aiAnalysis,
@@ -1346,6 +1351,8 @@ function DashboardView({
   onToggleWatch: (id: string) => void
   onApplyReroute: (id: number) => void
   onDismissReroute: (id: number) => void
+  onGenerateReroutes: () => void
+  generatingReroutes: boolean
   mlScores: Record<number, MLScore>
   mlRunning: boolean
   aiAnalysis: string
@@ -1628,6 +1635,28 @@ function DashboardView({
             {reroutes.filter(r => !r.applied && !r.dismissed).length} suggestions
           </span>
         </div>
+        <div style={{ padding: "8px 14px 0" }}>
+          <button
+            onClick={onGenerateReroutes}
+            disabled={generatingReroutes}
+            style={{
+              width: "100%",
+              padding: "6px 10px",
+              fontSize: 9,
+              fontFamily: "DM Mono, monospace",
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              background: "var(--primary-dim)",
+              color: "var(--primary)",
+              border: "1px solid var(--primary)40",
+              borderRadius: 4,
+              cursor: generatingReroutes ? "default" : "pointer",
+              opacity: generatingReroutes ? 0.6 : 1,
+            }}
+          >
+            {generatingReroutes ? "GENERATING…" : "⟳ GENERATE SUGGESTIONS"}
+          </button>
+        </div>
 
         <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
           {reroutes
@@ -1899,6 +1928,9 @@ export default function App() {
   const [mlRunning, setMlRunning] = useState(false)
   const [expandedMLId, setExpandedMLId] = useState<number | null>(null)
 
+  // Reroute generation state
+  const [generatingReroutes, setGeneratingReroutes] = useState(false)
+
   // Sidebar collapse state
   const [navCollapsed, setNavCollapsed] = useState(false)
 
@@ -2005,6 +2037,21 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
     dismissAlertApi(id).catch(err => console.error("Failed to dismiss alert on server:", err))
   }
 
+  const notifyTeam = (id: number) => {
+    const alert = alerts.find(a => a.id === id)
+    if (!alert) return
+    const message = `[${alert.severity.toUpperCase()}] ${alert.type} at ${alert.location}: ${alert.summary}`
+    notifyTeamApi(id, message)
+      .then(results => {
+        const sent = results.filter(r => r.status === "sent" || r.status === "success").length
+        window.alert(`Notified ${sent} of ${results.length} device(s).`)
+      })
+      .catch(err => {
+        console.error("Failed to notify team:", err)
+        window.alert("Failed to send notification. Check console for details.")
+      })
+  }
+
   const toggleWatch = (id: string) => {
     setRoutes(prev => {
       const next = prev.map(r => (r.id === id ? { ...r, watched: !r.watched } : r))
@@ -2024,6 +2071,28 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
   const dismissReroute = (id: number) => {
     setReroutes(prev => prev.map(r => (r.id === id ? { ...r, dismissed: true } : r)))
     dismissRerouteApi(id).catch(err => console.error("Failed to dismiss reroute on server:", err))
+  }
+
+  const generateSuggestions = async () => {
+    if (generatingReroutes) return
+    setGeneratingReroutes(true)
+    try {
+      const targets = routes.filter(r => r.risk === "critical" || r.risk === "high")
+      const results = await Promise.all(
+        targets.map(r => generateReroutesApi(r.id).catch(err => {
+          console.error(`Failed to generate reroutes for route ${r.id}:`, err)
+          return [] as Awaited<ReturnType<typeof generateReroutesApi>>
+        }))
+      )
+      const newReroutes = results.flat().map(rr => adaptReroute(rr, new Map()))
+      setReroutes(prev => {
+        const existingIds = new Set(prev.map(r => r.id))
+        const deduped = newReroutes.filter(r => !existingIds.has(r.id))
+        return [...prev, ...deduped]
+      })
+    } finally {
+      setGeneratingReroutes(false)
+    }
   }
 
   const liveCount = alerts.filter(a => !a.dismissed).length
@@ -2201,7 +2270,7 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
               border: "1px solid var(--border)",
             }}
           >
-            <span style={{ fontSize: 11, color: "var(--text-2)" }}>Rajesh Kumar</span>
+            <span style={{ fontSize: 11, color: "var(--text-2)" }}>Aparna Dhiraj</span>
             <div
               style={{
                 width: 22,
@@ -2213,7 +2282,7 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
                 justifyContent: "center",
               }}
             >
-              <span style={{ fontSize: 9, fontWeight: 700, color: "#fff" }}>RK</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#fff" }}>AD</span>
             </div>
           </div>
         </div>
@@ -2340,6 +2409,8 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
             onToggleWatch={toggleWatch}
             onApplyReroute={applyReroute}
             onDismissReroute={dismissReroute}
+            onGenerateReroutes={generateSuggestions}
+            generatingReroutes={generatingReroutes}
             mlScores={mlScores}
             mlRunning={mlRunning}
             aiAnalysis={aiAnalysis}
@@ -2351,7 +2422,7 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
         )}
         {page === "map" && <LiveMapPage />}
         {page === "planner" && <RoutePlannerPage />}
-        {page === "alerts" && <AlertsPage alerts={alerts} onDismiss={dismissAlert} />}
+        {page === "alerts" && <AlertsPage alerts={alerts} onDismiss={dismissAlert} onNotify={notifyTeam} />}
         {page === "analytics" && <AnalyticsPage />}
         {page === "settings" && <SettingsPage />}
       </div>

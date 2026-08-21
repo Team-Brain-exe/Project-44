@@ -222,3 +222,22 @@ export function dismissRerouteApi(id: number) {
 export function generateReroutesApi(routeId: string) {
   return postJSON<BackendReroute[]>(`/reroutes/generate/${routeId}`);
 }
+
+// ─── Notifications ─────────────────────────────────────────────────────────
+
+export type BackendNotification = {
+  id: number;
+  alert_id: number | null;
+  device_id: number | null;
+  phone_number: string;
+  message: string;
+  status: string;
+  detail: string | null;
+};
+
+export function notifyTeamApi(alertId: number, message: string) {
+  return postJSON<BackendNotification[]>("/notifications/send", {
+    alert_id: alertId,
+    message,
+  });
+}

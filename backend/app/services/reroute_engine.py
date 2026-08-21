@@ -14,6 +14,8 @@ from app.models.route import Route
 from app.models.port import Port
 from app.models.reroute import Reroute
 from app.services.risk_scoring import score_route, RISK_MEDIUM, CHOKEPOINT_TYPES
+from app.services.ai_reroute import generate_ai_reason
+from app.models.alert import Alert
 
 # Extra transit time/cost incurred by avoiding a chokepoint, per alt type.
 # These are rough industry-typical deltas, not derived from any dataset.
@@ -79,7 +81,11 @@ def generate_reroute_candidates(db: Session, route: Route) -> list[dict]:
     if risk_result["score"] < RISK_MEDIUM:
         return []
 
-    reason = TOP_FEATURE_REASONS.get(
+    contributing_alert_ids = risk_result.get("contributing_alerts", [])
+    alerts = db.query(Alert).filter(Alert.id.in_(contributing_alert_ids)).all() if contributing_alert_ids else []
+
+    ai_reason = generate_ai_reason(route, risk_result, alerts)
+    reason = ai_reason if ai_reason else TOP_FEATURE_REASONS.get(
         _top_feature(risk_result["features"]), "Elevated risk detected on this route"
     )
 
