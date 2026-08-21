@@ -47,9 +47,7 @@ pip freeze > requirements.txt
 echo ">> Writing backend .env..."
 cat > .env << ENVEOF
 DATABASE_URL=sqlite:///./project44.db
-TWILIO_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_FROM_NUMBER=
+FAST2SMS_API_KEY=
 ML_MODEL_PATH=app/ml/artifacts/model.pkl
 FRONTEND_URL=${FRONTEND_URL}
 ENVEOF
