@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef } from "react"
 import LiveMapPage, { LiveMapCanvas } from "./map/MapPage"
+import {
+  fetchDashboardData,
+  dismissAlertApi,
+  setRouteWatchedApi,
+  applyRerouteApi,
+  dismissRerouteApi,
+} from "./services/project44"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Severity = "critical" | "high" | "medium" | "low"
@@ -50,29 +57,6 @@ type MLScore = {
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
-
-const INITIAL_ALERTS: AlertEvent[] = [
-  { id: 1, time: "14:32", type: "CONFLICT", location: "Red Sea", route: "JNPT → Rotterdam", severity: "critical", summary: "Houthi drone strike on cargo vessel near Bab-el-Mandeb Strait. 3 ships diverted.", ageMin: 4 },
-  { id: 2, time: "13:58", type: "PORT STRIKE", location: "Colombo, Sri Lanka", route: "Chennai → Singapore", severity: "high", summary: "Port workers' strike entering day 2. 40+ vessels at anchor. Estimated 3-day backlog.", ageMin: 38 },
-  { id: 3, time: "12:15", type: "WEATHER", location: "Malacca Strait", route: "Mundra → Shanghai", severity: "medium", summary: "Tropical storm Kaveri forming. BMKG advisory issued. Expected passage in 18–24h.", ageMin: 101 },
-  { id: 4, time: "11:44", type: "SANCTIONS", location: "Suez Canal", route: "Kolkata → Hamburg", severity: "high", summary: "New EU sanctions on 4 vessel operators. Customs delay of 48–72h expected at Port Said.", ageMin: 112 },
-  { id: 5, time: "10:20", type: "CANAL CLOSURE", location: "Panama Canal", route: "Mumbai → Los Angeles", severity: "medium", summary: "Water level restriction limiting daily transits to 22 ships. Queue: 67 vessels.", ageMin: 196 },
-  { id: 6, time: "09:05", type: "TARIFF CHANGE", location: "Cape of Good Hope", route: "All India-Europe", severity: "low", summary: "South Africa raises anchorage fees 12% effective Sept 1. Affects rerouted Red Sea traffic.", ageMin: 271 },
-]
-
-const INITIAL_ROUTES: Route[] = [
-  { id: "R1", from: "JNPT", to: "Rotterdam", via: "Suez Canal", risk: "critical", score: 91, status: "AT RISK", freight: "₹3,840/TEU", delay: "+18d", watched: true },
-  { id: "R2", from: "Mundra", to: "Shanghai", via: "Malacca Strait", risk: "medium", score: 58, status: "MONITOR", freight: "₹1,200/TEU", delay: "+2d", watched: true },
-  { id: "R3", from: "Chennai", to: "Singapore", via: "Colombo", risk: "high", score: 74, status: "DISRUPTED", freight: "₹890/TEU", delay: "+4d", watched: true },
-  { id: "R4", from: "Kolkata", to: "Hamburg", via: "Red Sea", risk: "critical", score: 88, status: "AT RISK", freight: "₹4,020/TEU", delay: "+21d", watched: false },
-  { id: "R5", from: "Cochin", to: "Jeddah", via: "Arabian Sea", risk: "low", score: 22, status: "CLEAR", freight: "₹640/TEU", delay: "—", watched: false },
-]
-
-const INITIAL_REROUTES: Reroute[] = [
-  { id: 1, original: "JNPT → Rotterdam via Suez", alt: "JNPT → Rotterdam via Cape of Good Hope", via: "Durban (bunker stop)", extraDays: 14, extraCost: "+₹1,240/TEU", confidence: 94, reason: "Avoids Bab-el-Mandeb conflict zone entirely. Durban bunkering available." },
-  { id: 2, original: "Kolkata → Hamburg via Red Sea", alt: "Kolkata → Hamburg via Colombo → Cape", via: "Colombo tranship", extraDays: 19, extraCost: "+₹1,580/TEU", confidence: 87, reason: "Cape route adds 19 days but eliminates conflict exposure. Strike risk at Colombo: moderate." },
-  { id: 3, original: "Chennai → Singapore via Colombo", alt: "Chennai → Singapore direct", via: "Direct sailing", extraDays: 1, extraCost: "+₹120/TEU", confidence: 78, reason: "Bypass Colombo transhipment entirely during port strike. Minor schedule impact." },
-]
 
 const STATS = [
   { label: "India trade by sea", value: "95%", delta: null, sub: "of total volume" },
@@ -1901,9 +1885,11 @@ function MapPage({
 export default function App() {
   const [page, setPage] = useState<NavPage>("dashboard")
   const [activeAlert, setActiveAlert] = useState<number | null>(1)
-  const [alerts, setAlerts] = useState<AlertEvent[]>(INITIAL_ALERTS)
-  const [routes, setRoutes] = useState<Route[]>(INITIAL_ROUTES)
-  const [reroutes, setReroutes] = useState<Reroute[]>(INITIAL_REROUTES)
+  const [alerts, setAlerts] = useState<AlertEvent[]>([])
+  const [routes, setRoutes] = useState<Route[]>([])
+  const [reroutes, setReroutes] = useState<Reroute[]>([])
+  const [dataLoading, setDataLoading] = useState(true)
+  const [dataError, setDataError] = useState<string | null>(null)
   const [currentTime, setCurrentTime] = useState("")
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchVal, setSearchVal] = useState("")
@@ -1925,6 +1911,28 @@ export default function App() {
     update()
     const id = setInterval(update, 1000)
     return () => clearInterval(id)
+  }, [])
+
+  // Load real data from the backend on mount, replacing the old hardcoded mocks.
+  useEffect(() => {
+    let cancelled = false
+    fetchDashboardData()
+      .then(data => {
+        if (cancelled) return
+        setAlerts(data.alerts)
+        setRoutes(data.routes)
+        setReroutes(data.reroutes)
+        setDataError(null)
+      })
+      .catch(err => {
+        if (!cancelled) setDataError(err instanceof Error ? err.message : "Failed to load data")
+      })
+      .finally(() => {
+        if (!cancelled) setDataLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // ML scoring pipeline — runs whenever active alerts change
@@ -1992,10 +2000,31 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
     setAiLoading(false)
   }
 
-  const dismissAlert = (id: number) => setAlerts(prev => prev.map(a => (a.id === id ? { ...a, dismissed: true } : a)))
-  const toggleWatch = (id: string) => setRoutes(prev => prev.map(r => (r.id === id ? { ...r, watched: !r.watched } : r)))
-  const applyReroute = (id: number) => setReroutes(prev => prev.map(r => (r.id === id ? { ...r, applied: true } : r)))
-  const dismissReroute = (id: number) => setReroutes(prev => prev.map(r => (r.id === id ? { ...r, dismissed: true } : r)))
+  const dismissAlert = (id: number) => {
+    setAlerts(prev => prev.map(a => (a.id === id ? { ...a, dismissed: true } : a)))
+    dismissAlertApi(id).catch(err => console.error("Failed to dismiss alert on server:", err))
+  }
+
+  const toggleWatch = (id: string) => {
+    setRoutes(prev => {
+      const next = prev.map(r => (r.id === id ? { ...r, watched: !r.watched } : r))
+      const updated = next.find(r => r.id === id)
+      if (updated) {
+        setRouteWatchedApi(id, updated.watched).catch(err => console.error("Failed to update watch on server:", err))
+      }
+      return next
+    })
+  }
+
+  const applyReroute = (id: number) => {
+    setReroutes(prev => prev.map(r => (r.id === id ? { ...r, applied: true } : r)))
+    applyRerouteApi(id).catch(err => console.error("Failed to apply reroute on server:", err))
+  }
+
+  const dismissReroute = (id: number) => {
+    setReroutes(prev => prev.map(r => (r.id === id ? { ...r, dismissed: true } : r)))
+    dismissRerouteApi(id).catch(err => console.error("Failed to dismiss reroute on server:", err))
+  }
 
   const liveCount = alerts.filter(a => !a.dismissed).length
   const criticalCount = alerts.filter(a => !a.dismissed && a.severity === "critical").length
@@ -2189,6 +2218,26 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
           </div>
         </div>
       </header>
+
+      {(dataLoading || dataError) && (
+        <div
+          style={{
+            position: "fixed",
+            top: 50,
+            right: 16,
+            zIndex: 50,
+            padding: "6px 12px",
+            background: dataError ? "rgba(239,68,68,0.15)" : "rgba(0,212,255,0.1)",
+            border: `1px solid ${dataError ? "#ef444460" : "var(--primary)40"}`,
+            borderRadius: 4,
+            fontSize: 10,
+            fontFamily: "DM Mono, monospace",
+            color: dataError ? "#ef4444" : "var(--primary)",
+          }}
+        >
+          {dataError ? `Backend error: ${dataError}` : "Loading live data…"}
+        </div>
+      )}
 
       {/* Body */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>

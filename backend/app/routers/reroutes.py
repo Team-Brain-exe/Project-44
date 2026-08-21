@@ -3,7 +3,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.reroute import Reroute
+from app.models.route import Route
 from app.schemas.reroute import RerouteOut, RerouteCreate, RerouteUpdate
+from app.services.reroute_engine import create_reroute_suggestions, generate_for_all_routes
 
 router = APIRouter(prefix="/reroutes", tags=["reroutes"])
 
@@ -42,3 +44,16 @@ def dismiss_reroute(reroute_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(reroute)
     return reroute
+
+
+@router.post("/generate/{route_id}", response_model=list[RerouteOut])
+def generate_reroutes(route_id: int, db: Session = Depends(get_db)):
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return create_reroute_suggestions(db, route)
+
+
+@router.post("/generate/all", response_model=list[RerouteOut])
+def generate_reroutes_all(db: Session = Depends(get_db)):
+    return generate_for_all_routes(db)

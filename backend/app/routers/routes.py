@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.route import Route
 from app.schemas.route import RouteOut, RouteCreate, RouteUpdate
+from app.services.risk_scoring import score_route, score_all_routes
 
 router = APIRouter(prefix="/routes", tags=["routes"])
 
@@ -40,3 +41,16 @@ def create_route(route: RouteCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_route)
     return db_route
+
+
+@router.get("/{route_id}/risk")
+def get_route_risk(route_id: int, db: Session = Depends(get_db)):
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return score_route(db, route)
+
+
+@router.get("/risk/all")
+def get_all_routes_risk(db: Session = Depends(get_db)):
+    return score_all_routes(db)
