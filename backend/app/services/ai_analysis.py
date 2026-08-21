@@ -9,7 +9,7 @@ from app.config import settings
 from app.schemas.ai_analysis import RiskAnalysisRequest
 
 _client: Groq | None = None
-_MODEL = "llama-3.3-70b-versatile"
+_MODEL = "openai/gpt-oss-20b"
 
 
 def _get_client() -> Groq | None:
