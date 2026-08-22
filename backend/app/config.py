@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     ml_model_path: str = "app/ml/artifacts/model.pkl"
     frontend_url: str = ""
     groq_api_key: str = ""
+    opensky_client_id: str = ""
+    opensky_client_secret: str = ""
 
     class Config:
         env_file = ".env"
