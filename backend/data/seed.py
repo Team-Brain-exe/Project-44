@@ -20,6 +20,7 @@ from app.models.route import Route
 from app.models.alert import Alert
 from app.models.reroute import Reroute
 from app.models.notification import Notification
+from app.models.user_device import UserDevice  # noqa: F401 -- unused, but must be imported so Base.metadata knows this table exists for notifications's FK
 
 PORTS = [
     {"name": "Suez Canal", "country": "Egypt", "latitude": 30.5852, "longitude": 32.2654, "type": "canal"},
