@@ -12,9 +12,9 @@ const API_KEY = import.meta.env.VITE_AISSTREAM_API_KEY as string | undefined;
 // [[southWestLat, southWestLng], [northEastLat, northEastLng]]
 // The chokepoints UNILOG cares about — add more boxes as needed.
 const WATCHED_BOUNDING_BOXES: [[number, number], [number, number]][] = [
-  [[10, 40], [32, 50]], // Red Sea / Bab-el-Mandeb / Gulf of Suez
-  [[-1, 95], [8, 104]], // Strait of Malacca / Singapore
-  [[8, 68], [24, 90]], // Indian coastline (JNPT, Mundra, Chennai, Kolkata, Cochin)
+  [[5, 20], [35, 60]],   // Red Sea / Gulf of Aden / Suez approach / wider Arabian Sea
+  [[-5, 90], [15, 115]], // Strait of Malacca / Singapore / South China Sea approach
+  [[0, 55], [28, 95]],   // Indian coastline + Arabian Sea + Bay of Bengal
 ];
 
 type Listener = (vessels: VesselPosition[]) => void;

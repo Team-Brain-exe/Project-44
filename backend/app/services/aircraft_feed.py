@@ -16,9 +16,9 @@ TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protoc
 STATES_URL = "https://opensky-network.org/api/states/all"
 
 WATCHED_BBOXES = [
-    {"lamin": 10, "lomin": 40, "lamax": 32, "lomax": 50},   # Red Sea / Suez approach
-    {"lamin": -1, "lomin": 95, "lamax": 8, "lomax": 104},   # Strait of Malacca
-    {"lamin": 8, "lomin": 68, "lamax": 24, "lomax": 90},    # Indian airspace
+    {"lamin": 5, "lomin": 20, "lamax": 35, "lomax": 60},    # Red Sea / Gulf of Aden / wider Arabian airspace
+    {"lamin": -5, "lomin": 90, "lamax": 15, "lomax": 115},  # Strait of Malacca / South China Sea approach
+    {"lamin": 0, "lomin": 55, "lamax": 28, "lomax": 95},    # Indian airspace + Arabian Sea + Bay of Bengal
 ]
 
 _cached_token: dict | None = None
