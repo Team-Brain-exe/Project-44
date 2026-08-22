@@ -26,7 +26,9 @@ _cached_token: dict | None = None
 
 def _get_token() -> str | None:
     global _cached_token
+    print(f"[aircraft_feed] client_id set: {bool(settings.opensky_client_id)} (len={len(settings.opensky_client_id)}), client_secret set: {bool(settings.opensky_client_secret)} (len={len(settings.opensky_client_secret)})")
     if not settings.opensky_client_id or not settings.opensky_client_secret:
+        print("[aircraft_feed] Missing OpenSky credentials, skipping auth.")
         return None
 
     if _cached_token and _cached_token["expires_at"] > time.time():
