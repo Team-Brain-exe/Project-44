@@ -848,6 +848,7 @@ function RoutePlannerPage() {
   const [to, setTo] = useState("Rotterdam")
   const [cargo, setCargo] = useState("General Cargo")
   const [planned, setPlanned] = useState(false)
+  const [selectedRoute, setSelectedRoute] = useState<number | null>(null)
 
   const ports = ["JNPT", "Mundra", "Chennai", "Kolkata", "Cochin"]
   const destinations = ["Rotterdam", "Hamburg", "Shanghai", "Singapore", "Los Angeles", "Jeddah"]
@@ -879,6 +880,41 @@ function RoutePlannerPage() {
       note: "SAFE — Optimized bunkering en route",
     },
   ]
+
+  const exportRoutePdf = (opt: typeof options[number]) => {
+    const w = window.open("", "_blank")
+    if (!w) return
+    w.document.write(`
+      <html>
+        <head>
+          <title>Route Summary - ${from} to ${to}</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; padding: 40px; color: #111; }
+            h1 { font-size: 20px; margin-bottom: 4px; }
+            .sub { color: #666; margin-bottom: 24px; font-size: 13px; }
+            table { border-collapse: collapse; width: 100%; }
+            td { padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+            td:first-child { color: #666; width: 160px; }
+            .note { margin-top: 16px; font-size: 13px; color: #444; }
+          </style>
+        </head>
+        <body>
+          <h1>UNILOG Route Summary</h1>
+          <div class="sub">${from} &rarr; ${to} &middot; ${cargo}</div>
+          <table>
+            <tr><td>Route</td><td>${opt.route}</td></tr>
+            <tr><td>Transit Time</td><td>${opt.days} days</td></tr>
+            <tr><td>Cost</td><td>${opt.cost}</td></tr>
+            <tr><td>ML Risk Score</td><td>${opt.riskScore} / 100 (${opt.risk})</td></tr>
+          </table>
+          <div class="note">${opt.note}</div>
+        </body>
+      </html>
+    `)
+    w.document.close()
+    w.focus()
+    w.print()
+  }
 
   return (
     <div style={{ padding: 24, overflowY: "auto", height: "100%" }}>
@@ -930,7 +966,7 @@ function RoutePlannerPage() {
             </div>
           ))}
           <button
-            onClick={() => setPlanned(true)}
+            onClick={() => { setPlanned(true); setSelectedRoute(null) }}
             style={{
               marginTop: 4,
               padding: "10px",
@@ -967,7 +1003,7 @@ function RoutePlannerPage() {
                 key={i}
                 style={{
                   background: "var(--panel)",
-                  border: `1px solid ${i === 1 ? "#22c55e40" : "var(--border)"}`,
+                  border: `1px solid ${selectedRoute === i ? "#3b82f6" : i === 1 ? "#22c55e40" : "var(--border)"}`,
                   borderLeft: `2px solid ${SEV_COLOR[opt.risk]}`,
                   borderRadius: 6,
                   padding: 16,
@@ -1007,8 +1043,10 @@ function RoutePlannerPage() {
                 </div>
                 <RiskBar score={opt.riskScore} sev={opt.risk} />
                 <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                  <Btn>SELECT ROUTE</Btn>
-                  <Btn>EXPORT PDF</Btn>
+                  <Btn onClick={() => setSelectedRoute(i)}>
+                    {selectedRoute === i ? "\u2713 SELECTED" : "SELECT ROUTE"}
+                  </Btn>
+                  <Btn onClick={() => exportRoutePdf(opt)}>EXPORT PDF</Btn>
                 </div>
               </div>
             ))}
@@ -2032,6 +2070,7 @@ export default function App() {
       .then(results => {
         const sent = results.filter(r => r.status === "sent" || r.status === "success").length
         window.alert(`Notified ${sent} of ${results.length} device(s).`)
+        dismissAlert(id)
       })
       .catch(err => {
         console.error("Failed to notify team:", err)
