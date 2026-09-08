@@ -9,6 +9,8 @@ class AlertBase(BaseModel):
     severity: int
     summary: str
     age_min: int
+    is_forecast: bool = False
+    eta_hours: int | None = None
     dismissed: bool = False
 
 
@@ -25,3 +27,4 @@ class AlertOut(AlertBase):
 
 class AlertUpdate(BaseModel):
     dismissed: bool | None = None
+

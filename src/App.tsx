@@ -25,6 +25,8 @@ type AlertEvent = {
   severity: Severity
   summary: string
   ageMin: number
+  isForecast?: boolean
+  etaHours?: number | null
   dismissed?: boolean
 }
 
@@ -48,6 +50,7 @@ type Reroute = {
   via: string
   extraDays: number
   extraCost: string
+  extraCO2: string
   confidence: number
   reason: string
   applied?: boolean
@@ -207,6 +210,30 @@ function SeverityBadge({ sev }: { sev: Severity }) {
       }}
     >
       {sev.toUpperCase()}
+    </span>
+  )
+}
+
+// Climate early-warning badge: distinguishes a forecast (something predicted
+// to happen, with a lead time) from a live/active alert (already happening).
+function ForecastBadge({ etaHours }: { etaHours: number | null | undefined }) {
+  if (etaHours == null) return null
+  return (
+    <span
+      className="mono"
+      style={{
+        fontSize: 8,
+        fontWeight: 700,
+        letterSpacing: "0.08em",
+        padding: "2px 6px",
+        borderRadius: 3,
+        background: "rgba(56,189,248,0.12)",
+        color: "#38bdf8",
+        border: "1px solid #38bdf840",
+        whiteSpace: "nowrap",
+      }}
+    >
+      ⚠ FORECAST · IMPACT IN {etaHours}H
     </span>
   )
 }
@@ -1128,6 +1155,7 @@ function AlertsPage({ alerts, onDismiss, onNotify }: { alerts: AlertEvent[]; onD
                 <span className="mono" style={{ fontSize: 9, color: "var(--text-3)" }}>
                   {a.time}
                 </span>
+                {a.isForecast && <ForecastBadge etaHours={a.etaHours} />}
                 <span
                   className="mono"
                   style={{
@@ -1529,6 +1557,7 @@ function DashboardView({
                       <span className="mono" style={{ fontSize: 9, color: "var(--text-3)" }}>
                         {a.time}
                       </span>
+                      {a.isForecast && <ForecastBadge etaHours={a.etaHours} />}
                       <span
                         className="mono"
                         style={{
@@ -1722,12 +1751,15 @@ function DashboardView({
                 <div className="mono" style={{ fontSize: 10, color: "var(--text)", fontWeight: 500, marginBottom: 4 }}>
                   {rr.alt}
                 </div>
-                <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                   <span className="mono" style={{ fontSize: 9, color: "#f59e0b" }}>
                     +{rr.extraDays}d
                   </span>
                   <span className="mono" style={{ fontSize: 9, color: "#f59e0b" }}>
                     {rr.extraCost}
+                  </span>
+                  <span className="mono" style={{ fontSize: 9, color: "#fb923c" }}>
+                    {rr.extraCO2}
                   </span>
                   <span className="mono" style={{ fontSize: 9, color: "var(--text-3)" }}>
                     via {rr.via}
@@ -1927,6 +1959,7 @@ function MapPage({
                     <span className="mono" style={{ fontSize: 8, color: "var(--text-3)" }}>
                       {a.time}
                     </span>
+                    {a.isForecast && <ForecastBadge etaHours={a.etaHours} />}
                     {ml && (
                       <span className="mono" style={{ marginLeft: "auto", fontSize: 8, color: SEV_COLOR[a.severity] }}>
                         ML {ml.score}

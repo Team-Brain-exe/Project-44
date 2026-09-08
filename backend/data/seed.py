@@ -96,6 +96,22 @@ ALERTS = [
         "summary": "Minor fog delays at port, expected to clear by afternoon.",
         "age_min": 90, "dismissed": False,
     },
+    # ─── Climate early-warning forecasts ────────────────────────────────────
+    # Unlike the alerts above (something already happening), these are
+    # *predicted* hazards with a lead time (eta_hours) before impact --
+    # the "before the damage is done" half of the climate-risk story.
+    {
+        "time": "05:30", "type": "storm forecast", "location": "Strait of Malacca",
+        "route": "Shanghai - Singapore", "severity": 4,
+        "summary": "Tropical cyclone system forming in the Andaman Sea, forecast to intensify and track across the Strait of Malacca within the next day and a half.",
+        "age_min": 10, "is_forecast": True, "eta_hours": 36, "dismissed": False,
+    },
+    {
+        "time": "08:45", "type": "flood forecast", "location": "Jawaharlal Nehru Port (JNPT)",
+        "route": "Mumbai - Jebel Ali", "severity": 3,
+        "summary": "Heavy monsoon rainfall forecast over Mumbai's coastal belt; rising flood risk expected to slow port operations and loading.",
+        "age_min": 20, "is_forecast": True, "eta_hours": 18, "dismissed": False,
+    },
 ]
 
 
@@ -127,3 +143,4 @@ def seed(wipe: bool = True):
 
 if __name__ == "__main__":
     seed(wipe="--keep" not in sys.argv)
+

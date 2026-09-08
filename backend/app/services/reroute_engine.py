@@ -25,6 +25,20 @@ DETOUR_PROFILES = {
     "port": {"extra_days": 2.0, "extra_cost": 150_000.0},
 }
 
+# Rough estimated CO2 output for a large container vessel underway, in
+# tonnes/day. This is a widely-cited order-of-magnitude figure for
+# fuel-oil-burning container ships (~150-200 tonnes/day at cruising speed),
+# not a precise per-vessel figure -- used here to give reroute suggestions a
+# comparable, illustrative emissions delta rather than an audited one.
+EMISSIONS_TONNES_CO2_PER_DAY = 170.0
+
+
+def _estimate_extra_co2_tonnes(extra_days: float) -> float:
+    """Rough estimated extra CO2 (tonnes) from the additional transit days a
+    detour adds -- more days at sea burning bunker fuel means more emissions,
+    on top of the added cost/delay already tracked. Illustrative, not audited."""
+    return round(extra_days * EMISSIONS_TONNES_CO2_PER_DAY, 1)
+
 TOP_FEATURE_REASONS = {
     "severity": "Elevated severity across active alerts on this route",
     "age_hours": "Recent alert activity on this route",
@@ -99,6 +113,7 @@ def generate_reroute_candidates(db: Session, route: Route) -> list[dict]:
                 "via": port.name,
                 "extra_days": profile["extra_days"],
                 "extra_cost": profile["extra_cost"],
+                "extra_co2_tonnes": _estimate_extra_co2_tonnes(profile["extra_days"]),
                 "confidence": risk_result["confidence"],
                 "reason": reason,
                 "applied": False,
@@ -136,3 +151,4 @@ def generate_for_all_routes(db: Session, persist: bool = True) -> list[Reroute]:
     for route in routes:
         results.extend(create_reroute_suggestions(db, route, persist=persist))
     return results
+

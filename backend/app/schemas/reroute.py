@@ -7,6 +7,7 @@ class RerouteBase(BaseModel):
     via: str
     extra_days: float
     extra_cost: float
+    extra_co2_tonnes: float = 0.0
     confidence: float
     reason: str
     applied: bool = False
@@ -27,3 +28,4 @@ class RerouteOut(RerouteBase):
 class RerouteUpdate(BaseModel):
     applied: bool | None = None
     dismissed: bool | None = None
+

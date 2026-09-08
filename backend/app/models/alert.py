@@ -13,4 +13,7 @@ class Alert(Base):
     severity = Column(Integer)
     summary = Column(String)
     age_min = Column(Integer)
+    is_forecast = Column(Boolean, default=False)
+    eta_hours = Column(Integer, nullable=True)
     dismissed = Column(Boolean, default=False)
+

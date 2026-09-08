@@ -15,6 +15,8 @@ export type BackendAlert = {
   severity: number; // 1-5
   summary: string;
   age_min: number;
+  is_forecast: boolean;
+  eta_hours: number | null;
   dismissed: boolean;
 };
 
@@ -38,6 +40,7 @@ export type BackendReroute = {
   via: string;
   extra_days: number;
   extra_cost: number;
+  extra_co2_tonnes: number;
   confidence: number; // 0-1
   reason: string;
   applied: boolean;
@@ -57,6 +60,8 @@ export type AlertEvent = {
   severity: Severity;
   summary: string;
   ageMin: number;
+  isForecast: boolean;
+  etaHours: number | null;
   dismissed?: boolean;
 };
 
@@ -80,6 +85,7 @@ export type FrontendReroute = {
   via: string;
   extraDays: number;
   extraCost: string;
+  extraCO2: string;
   confidence: number;
   reason: string;
   applied?: boolean;
@@ -114,6 +120,8 @@ export function adaptAlert(a: BackendAlert): AlertEvent {
     severity: severityFromInt(a.severity),
     summary: a.summary,
     ageMin: a.age_min,
+    isForecast: a.is_forecast,
+    etaHours: a.eta_hours,
     dismissed: a.dismissed,
   };
 }
@@ -149,6 +157,7 @@ export function adaptReroute(
     via: rr.via,
     extraDays: rr.extra_days,
     extraCost: `+$${rr.extra_cost.toLocaleString()}`,
+    extraCO2: `+${rr.extra_co2_tonnes.toLocaleString()}t CO\u2082`,
     confidence: Math.round(rr.confidence * 100),
     reason: rr.reason,
     applied: rr.applied,
@@ -241,3 +250,4 @@ export function notifyTeamApi(alertId: number, message: string) {
     message,
   });
 }
+
