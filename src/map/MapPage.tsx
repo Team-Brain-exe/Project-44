@@ -19,6 +19,8 @@ import {
   useRiskCorridors,
 } from "../hooks/useLiveData";
 
+const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY as string | undefined;
+
 type Severity = "critical" | "high" | "medium" | "low";
 
 function buildGraticule(): LatLngExpression[][] {
@@ -322,7 +324,9 @@ export function LiveMapCanvas() {
         <InvalidateMapSize />
 
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url={`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${
+            CARTO_API_KEY ? `?api_key=${CARTO_API_KEY}` : ""
+          }`}
           attribution='&copy; OpenStreetMap contributors &copy; CARTO'
         />
 
