@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     opensky_client_id: str = ""
     opensky_client_secret: str = ""
+    demo_mode: bool = True
 
     class Config:
         env_file = ".env"

@@ -2069,7 +2069,11 @@ export default function App() {
     notifyTeamApi(id, message)
       .then(results => {
         const sent = results.filter(r => r.status === "sent" || r.status === "success").length
-        window.alert(`Notified ${sent} of ${results.length} device(s).`)
+        const simulated = results.filter(r => r.status === "simulated").length
+        const label = simulated > 0
+          ? `Notified ${sent + simulated} of ${results.length} device(s) (${simulated} simulated \u2014 demo mode).`
+          : `Notified ${sent} of ${results.length} device(s).`
+        window.alert(label)
         dismissAlert(id)
       })
       .catch(err => {
