@@ -25,20 +25,36 @@ def send_notification(payload: NotificationSendRequest, db: Session = Depends(ge
 
     devices = db.query(UserDevice).filter(UserDevice.active == True).all()  # noqa: E712
 
-    if not devices and settings.demo_mode:
-        # No real devices registered yet (fresh deploy / no one's added their
-        # number). Rather than 400 the whole "Notify Team" flow in front of a
-        # demo audience, auto-provision one placeholder device so the button
-        # always completes end-to-end. send_sms() will fall back to a
-        # "simulated" send for it, same as for any other unreachable device.
-        demo_device = UserDevice(label="Demo Ops Team", phone_number="9999999999", active=True)
-        db.add(demo_device)
-        db.commit()
-        db.refresh(demo_device)
-        devices = [demo_device]
-
     if not devices:
-        raise HTTPException(status_code=400, detail="No active devices to notify")
+        # DB-backed devices are wiped on every redeploy on ephemeral hosting
+        # (e.g. Render free tier with no persistent disk). NOTIFY_FALLBACK_NUMBERS
+        # is a comma-separated list of real numbers set as an env var, which
+        # survives redeploys since it's not stored on the container filesystem.
+        fallback_numbers = [
+            n.strip() for n in settings.notify_fallback_numbers.split(",") if n.strip()
+        ]
+        if fallback_numbers:
+            results = []
+            for number in fallback_numbers:
+                outcome = send_sms(number, payload.message)
+                notification = Notification(
+                    alert_id=alert.id,
+                    device_id=None,
+                    phone_number=number,
+                    message=payload.message,
+                    status=outcome["status"],
+                    detail=outcome["detail"],
+                )
+                db.add(notification)
+                db.commit()
+                db.refresh(notification)
+                results.append(notification)
+            return results
+
+        raise HTTPException(
+            status_code=400,
+            detail="No active devices to notify and NOTIFY_FALLBACK_NUMBERS not set",
+        )
 
     results = []
     for device in devices:

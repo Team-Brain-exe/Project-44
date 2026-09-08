@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     opensky_client_id: str = ""
     opensky_client_secret: str = ""
     demo_mode: bool = True
+    notify_fallback_numbers: str = ""  # comma-separated real numbers, survives redeploys
 
     class Config:
         env_file = ".env"
