@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models.alert import Alert
 from app.models.user_device import UserDevice
@@ -23,6 +24,19 @@ def send_notification(payload: NotificationSendRequest, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Alert not found")
 
     devices = db.query(UserDevice).filter(UserDevice.active == True).all()  # noqa: E712
+
+    if not devices and settings.demo_mode:
+        # No real devices registered yet (fresh deploy / no one's added their
+        # number). Rather than 400 the whole "Notify Team" flow in front of a
+        # demo audience, auto-provision one placeholder device so the button
+        # always completes end-to-end. send_sms() will fall back to a
+        # "simulated" send for it, same as for any other unreachable device.
+        demo_device = UserDevice(label="Demo Ops Team", phone_number="9999999999", active=True)
+        db.add(demo_device)
+        db.commit()
+        db.refresh(demo_device)
+        devices = [demo_device]
+
     if not devices:
         raise HTTPException(status_code=400, detail="No active devices to notify")
 
