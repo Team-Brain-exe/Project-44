@@ -1,59 +1,73 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-
+import requests
 from app.config import settings
-from app.database import get_db
-from app.models.alert import Alert
-from app.models.user_device import UserDevice
-from app.models.notification import Notification
-from app.schemas.notification import NotificationOut, NotificationSendRequest
-from app.services.notify import send_sms
 
-router = APIRouter(prefix="/notifications", tags=["notifications"])
+FAST2SMS_URL = "https://www.fast2sms.com/dev/bulkV2"
 
 
-@router.get("", response_model=list[NotificationOut])
-def list_notifications(db: Session = Depends(get_db)):
-    return db.query(Notification).all()
+def _clean_number(phone_number: str) -> str:
+    """Fast2SMS wants bare 10-digit Indian numbers, no +91 / country code."""
+    digits = "".join(c for c in phone_number if c.isdigit())
+    if len(digits) > 10:
+        digits = digits[-10:]
+    return digits
 
 
-@router.post("/send", response_model=list[NotificationOut])
-def send_notification(payload: NotificationSendRequest, db: Session = Depends(get_db)):
-    alert = db.query(Alert).filter(Alert.id == payload.alert_id).first()
-    if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
+def _simulate(reason: str) -> dict:
+    """
+    Demo-mode fallback: rather than surfacing a broken SMS gateway mid-demo
+    (expired trial credits, unapproved DLT sender ID, missing key, etc.),
+    record the notification as sent so the alert flow still looks and
+    behaves correctly. Mirrors the SIM· fallback already used for
+    vessels/aircraft when a live feed has no data.
+    """
+    return {"status": "simulated", "detail": f"DEMO MODE (SIM·): {reason}"}
 
-    devices = db.query(UserDevice).filter(UserDevice.active == True).all()  # noqa: E712
 
-    if not devices and settings.demo_mode:
-        # No real devices registered yet (fresh deploy / no one's added their
-        # number). Rather than 400 the whole "Notify Team" flow in front of a
-        # demo audience, auto-provision one placeholder device so the button
-        # always completes end-to-end. send_sms() will fall back to a
-        # "simulated" send for it, same as for any other unreachable device.
-        demo_device = UserDevice(label="Demo Ops Team", phone_number="9999999999", active=True)
-        db.add(demo_device)
-        db.commit()
-        db.refresh(demo_device)
-        devices = [demo_device]
+def send_sms(phone_number: str, message: str) -> dict:
+    """
+    Sends an SMS via Fast2SMS. Returns a dict with at least:
+      { "status": "sent" | "simulated" | "failed", "detail": <raw response or error text> }
+    Never raises — callers (the notifications router) log the result either way.
 
-    if not devices:
-        raise HTTPException(status_code=400, detail="No active devices to notify")
+    In demo mode (settings.demo_mode, on by default), any failure to
+    actually deliver — missing key, invalid number, gateway error — falls
+    back to a clearly labeled "simulated" success instead of "failed", so a
+    dead SMS credit balance never derails a live demo. Set DEMO_MODE=false
+    to see real failures again once you're past the demo.
+    """
+    if not settings.fast2sms_api_key:
+        if settings.demo_mode:
+            return _simulate("FAST2SMS_API_KEY not configured")
+        return {"status": "failed", "detail": "FAST2SMS_API_KEY not configured"}
 
-    results = []
-    for device in devices:
-        outcome = send_sms(device.phone_number, payload.message)
-        notification = Notification(
-            alert_id=alert.id,
-            device_id=device.id,
-            phone_number=device.phone_number,
-            message=payload.message,
-            status=outcome["status"],
-            detail=outcome["detail"],
-        )
-        db.add(notification)
-        db.commit()
-        db.refresh(notification)
-        results.append(notification)
+    number = _clean_number(phone_number)
+    if len(number) != 10:
+        detail = f"invalid phone number: {phone_number}"
+        if settings.demo_mode:
+            return _simulate(detail)
+        return {"status": "failed", "detail": detail}
 
-    return results
+    payload = {
+        "route": "q",
+        "message": message,
+        "language": "english",
+        "flash": 0,
+        "numbers": number,
+    }
+    headers = {
+        "authorization": settings.fast2sms_api_key,
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    try:
+        response = requests.post(FAST2SMS_URL, data=payload, headers=headers, timeout=10)
+        body = response.json()
+        if response.status_code == 200 and body.get("return") is True:
+            return {"status": "sent", "detail": str(body)}
+        if settings.demo_mode:
+            return _simulate(str(body))
+        return {"status": "failed", "detail": str(body)}
+    except requests.RequestException as exc:
+        if settings.demo_mode:
+            return _simulate(str(exc))
+        return {"status": "failed", "detail": str(exc)}
