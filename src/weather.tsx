@@ -169,7 +169,6 @@ export type WeatherEvent = {
   label: string
   detail: string
 }
-
 // Derives the set of map-able weather hazards from a list of alerts (any
 // shape with type/summary/location — AlertEvent satisfies this).
 export function weatherEventsFromAlerts<T extends WeatherAlertLike & { id: string | number; dismissed?: boolean }>(
@@ -203,5 +202,55 @@ export function WeatherHazardMarkers({ events }: { events: WeatherEvent[] }) {
         )
       })}
     </>
+  )
+}
+
+// ─── Per-route weather report ──────────────────────────────────────────────
+//
+// Matches alerts onto a specific route so a route card can show "here's the
+// weather sitting on this lane" rather than making someone cross-reference
+// the Alerts page. Mirrors the matching rule already used for ML risk
+// scoring (backend/data/seed.py comment + computeRiskScore in App.tsx):
+// an alert's `route` text is checked against "{from} - {to}" first, then
+// falls back to matching the route's `via` chokepoint, then the alert's
+// raw location as a last resort (so a landed alert on the same chokepoint
+// still shows even if the route text wasn't set consistently).
+export type RouteLike = { from: string; to: string; via: string }
+
+export function weatherForRoute<
+  T extends WeatherAlertLike & { id: string | number; route: string; dismissed?: boolean }
+>(route: RouteLike, alerts: T[]): WeatherEvent[] {
+  const routeKey = `${route.from} - ${route.to}`
+  return alerts
+    .filter(a => !a.dismissed)
+    .filter(a => a.route === routeKey || a.route === route.via || a.location === route.via)
+    .map(a => {
+      const kind = classifyWeather(a)
+      if (!kind) return null
+      return { id: a.id, location: a.location, kind, label: weatherLabel(kind), detail: a.summary ?? "" }
+    })
+    .filter((e): e is WeatherEvent => e !== null)
+}
+
+// Compact weather report for a single route row: a run of hazard badges if
+// anything is live on that lane, or a quiet "no weather hazards" line if
+// clear — so the status is visible either way, not just when there's bad news.
+export function RouteWeatherReport({ events }: { events: WeatherEvent[] }) {
+  if (events.length === 0) {
+    return (
+      <div
+        className="mono"
+        style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 8, color: "var(--text-3)", marginTop: 4 }}
+      >
+        <span style={{ color: "#22c55e" }}>✓</span> NO WEATHER HAZARDS
+      </div>
+    )
+  }
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }} title={events.map(e => `${e.location}: ${e.detail}`).join("\n")}>
+      {events.map(ev => (
+        <WeatherBadge key={`rw-${ev.id}`} kind={ev.kind} />
+      ))}
+    </div>
   )
 }
