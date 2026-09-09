@@ -21,6 +21,12 @@ CHOKEPOINT_TYPES = {"canal", "strait"}
 RISK_HIGH = 67
 RISK_MEDIUM = 34
 
+# Alert types that count as "weather-driven" for the ML model's
+# weather_severity feature -- both alerts for something already happening
+# (type == "weather") and climate forecast alerts predicting something
+# about to happen (storm/flood forecasts, flagged via is_forecast).
+WEATHER_ALERT_TYPES = {"weather", "storm forecast", "flood forecast"}
+
 
 def risk_label(score: float) -> str:
     if score >= RISK_HIGH:
@@ -28,6 +34,34 @@ def risk_label(score: float) -> str:
     if score >= RISK_MEDIUM:
         return "medium"
     return "low"
+
+
+def _forecast_urgency(eta_hours: int | None) -> float:
+    """
+    How much weight a forecast's severity should carry right now, based on
+    how soon it's expected to hit. A cyclone 3 days out shouldn't score the
+    same as one making landfall in 2 hours -- urgency scales up as the ETA
+    shrinks. Floor of 0.5 so even a distant forecast still visibly raises
+    risk (that's the whole point of early warning), capped at 1.0 for
+    anything imminent or already active.
+    """
+    if eta_hours is None:
+        return 1.0
+    return max(0.5, min(1.0, 1 - eta_hours / 72))
+
+
+def _weather_signal(alert: Alert) -> float:
+    """
+    This alert's contribution to the weather_severity feature: full severity
+    if it's an active weather event, or severity scaled by forecast urgency
+    if it's a predicted storm/flood that hasn't hit yet. Zero for anything
+    else (geopolitical, congestion, security alerts don't feed this feature).
+    """
+    if alert.type not in WEATHER_ALERT_TYPES:
+        return 0.0
+    if alert.is_forecast:
+        return alert.severity * _forecast_urgency(alert.eta_hours)
+    return float(alert.severity)
 
 
 def _route_alerts(db: Session, route: Route) -> list[Alert]:
@@ -78,7 +112,7 @@ def build_route_features(db: Session, route: Route, alerts: list[Alert]) -> dict
     age_hours = min((a.age_min for a in active_alerts), default=0) / 60.0
     route_overlap = len(active_alerts) / len(all_active) if all_active else 0.0
     weather_severity = max(
-        (a.severity for a in active_alerts if a.type == "weather"), default=0
+        (_weather_signal(a) for a in active_alerts), default=0.0
     )
 
     return {
@@ -139,7 +173,7 @@ def score_alert(db: Session, alert: Alert) -> dict:
         "is_chokepoint": is_chokepoint,
         "freight_value_musd": 0.0,
         "vessel_count_nearby": 1,
-        "weather_severity": alert.severity if alert.type == "weather" else 0,
+        "weather_severity": _weather_signal(alert),
         "port_congestion_pct": 0.0,
     }
     result = predict(features)
@@ -151,3 +185,4 @@ def score_alert(db: Session, alert: Alert) -> dict:
         "risk": risk_label(result["score"]),
         "features": result["features"],
     }
+
