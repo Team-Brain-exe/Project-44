@@ -11,6 +11,7 @@ import {
   notifyTeamApi,
   BACKEND_URL,
 } from "./services/project44"
+import { WeatherBadge, classifyWeather } from "./weather"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Severity = "critical" | "high" | "medium" | "low"
@@ -1204,6 +1205,7 @@ function AlertsPage({ alerts, onDismiss, onNotify }: { alerts: AlertEvent[]; onD
                 >
                   {a.type}
                 </span>
+                <WeatherBadge kind={classifyWeather(a)} />
                 <SeverityBadge sev={a.severity} />
                 <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                   <Btn small onClick={() => onNotify(a.id)}>NOTIFY TEAM</Btn>
@@ -1477,7 +1479,7 @@ function DashboardView({
               overflow: "hidden",
             }}
           >
-            <LiveMapCanvas />
+            <LiveMapCanvas alerts={alerts} />
           </div>
           {mlRunning && (
             <div style={{ position: "absolute", top: 44, right: 12 }}>
@@ -1607,6 +1609,7 @@ function DashboardView({
                       >
                         {a.type}
                       </span>
+                      <WeatherBadge kind={classifyWeather(a)} />
                       <SeverityBadge sev={a.severity} />
                       {ml && (
                         <button
@@ -2615,7 +2618,7 @@ export default function App() {
             setExpandedMLId={setExpandedMLId}
           />
         )}
-        {page === "map" && <LiveMapPage />}
+        {page === "map" && <LiveMapPage alerts={alerts} />}
         {page === "planner" && <RoutePlannerPage />}
         {page === "alerts" && <AlertsPage alerts={alerts} onDismiss={dismissAlert} onNotify={notifyTeam} />}
         {page === "analytics" && <AnalyticsPage />}
