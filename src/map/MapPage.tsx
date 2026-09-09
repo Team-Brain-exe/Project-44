@@ -325,7 +325,7 @@ export function LiveMapCanvas() {
 
         <TileLayer
           url={`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${
-            CARTO_API_KEY ? `?api_key=${CARTO_API_KEY}` : ""
+            CARTO_API_KEY ? `?key=${CARTO_API_KEY}` : ""
           }`}
           attribution='&copy; OpenStreetMap contributors &copy; CARTO'
         />
