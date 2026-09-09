@@ -11,6 +11,7 @@ class AlertBase(BaseModel):
     age_min: int
     is_forecast: bool = False
     eta_hours: int | None = None
+    causal_chain: str | None = None
     dismissed: bool = False
 
 

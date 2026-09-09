@@ -15,5 +15,6 @@ class Alert(Base):
     age_min = Column(Integer)
     is_forecast = Column(Boolean, default=False)
     eta_hours = Column(Integer, nullable=True)
+    causal_chain = Column(String, nullable=True)  # pipe-delimited stages, e.g. "A|B|C"
     dismissed = Column(Boolean, default=False)
 

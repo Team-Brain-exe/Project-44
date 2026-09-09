@@ -17,6 +17,7 @@ export type BackendAlert = {
   age_min: number;
   is_forecast: boolean;
   eta_hours: number | null;
+  causal_chain: string | null;
   dismissed: boolean;
 };
 
@@ -62,6 +63,7 @@ export type AlertEvent = {
   ageMin: number;
   isForecast: boolean;
   etaHours: number | null;
+  causalChain: string[] | null;
   dismissed?: boolean;
 };
 
@@ -122,6 +124,7 @@ export function adaptAlert(a: BackendAlert): AlertEvent {
     ageMin: a.age_min,
     isForecast: a.is_forecast,
     etaHours: a.eta_hours,
+    causalChain: a.causal_chain ? a.causal_chain.split("|") : null,
     dismissed: a.dismissed,
   };
 }

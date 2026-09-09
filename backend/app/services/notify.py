@@ -20,17 +20,17 @@ def _simulate(reason: str) -> dict:
     behaves correctly. Mirrors the SIM· fallback already used for
     vessels/aircraft when a live feed has no data.
     """
-    return {"status": "simulated", "detail": f"DEMO MODE (SIM\u00b7): {reason}"}
+    return {"status": "simulated", "detail": f"DEMO MODE (SIM·): {reason}"}
 
 
 def send_sms(phone_number: str, message: str) -> dict:
     """
     Sends an SMS via Fast2SMS. Returns a dict with at least:
       { "status": "sent" | "simulated" | "failed", "detail": <raw response or error text> }
-    Never raises -- callers (the notifications router) log the result either way.
+    Never raises — callers (the notifications router) log the result either way.
 
     In demo mode (settings.demo_mode, on by default), any failure to
-    actually deliver -- missing key, invalid number, gateway error -- falls
+    actually deliver — missing key, invalid number, gateway error — falls
     back to a clearly labeled "simulated" success instead of "failed", so a
     dead SMS credit balance never derails a live demo. Set DEMO_MODE=false
     to see real failures again once you're past the demo.
@@ -71,3 +71,4 @@ def send_sms(phone_number: str, message: str) -> dict:
         if settings.demo_mode:
             return _simulate(str(exc))
         return {"status": "failed", "detail": str(exc)}
+

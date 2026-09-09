@@ -27,6 +27,7 @@ type AlertEvent = {
   ageMin: number
   isForecast?: boolean
   etaHours?: number | null
+  causalChain?: string[] | null
   dismissed?: boolean
 }
 
@@ -235,6 +236,39 @@ function ForecastBadge({ etaHours }: { etaHours: number | null | undefined }) {
     >
       ⚠ FORECAST · IMPACT IN {etaHours}H
     </span>
+  )
+}
+
+// Shows *why* a forecast is being made: the chain of climate factors leading
+// from cause to shipping impact (e.g. warmer seas -> more moisture -> a
+// cyclone -> a blocked strait). Renders as connected stage chips so the
+// reasoning is visible, not just the conclusion.
+function CausalChain({ stages }: { stages: string[] | null | undefined }) {
+  if (!stages || stages.length === 0) return null
+  return (
+    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
+      {stages.map((stage, i) => (
+        <span key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span
+            className="mono"
+            style={{
+              fontSize: 9,
+              padding: "3px 7px",
+              borderRadius: 3,
+              background: "var(--panel-2)",
+              border: "1px solid var(--border-light)",
+              color: "var(--text-2)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {stage}
+          </span>
+          {i < stages.length - 1 && (
+            <span style={{ color: "var(--text-3)", fontSize: 10 }}>→</span>
+          )}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -1183,6 +1217,7 @@ function AlertsPage({ alerts, onDismiss, onNotify }: { alerts: AlertEvent[]; onD
                 {a.route}
               </div>
               <div style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.6 }}>{a.summary}</div>
+              {a.isForecast && <CausalChain stages={a.causalChain} />}
             </div>
           ))}
         {filtered.filter(a => !a.dismissed).length === 0 && (
@@ -2001,6 +2036,7 @@ export default function App() {
 
   // Sidebar collapse state
   const [navCollapsed, setNavCollapsed] = useState(false)
+  const [showProblemStatement, setShowProblemStatement] = useState(false)
 
   // Gemini AI state
   const [aiAnalysis, setAiAnalysis] = useState("")
@@ -2318,6 +2354,21 @@ export default function App() {
               fontFamily: "DM Mono, monospace",
               cursor: "pointer",
             }}
+            onClick={() => setShowProblemStatement(true)}
+          >
+            ⚠ THE PROBLEM
+          </button>
+          <button
+            style={{
+              padding: "4px 10px",
+              background: "transparent",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              color: "var(--text-3)",
+              fontSize: 10,
+              fontFamily: "DM Mono, monospace",
+              cursor: "pointer",
+            }}
             onClick={() => setPage("settings")}
           >
             ⚙ CONFIG
@@ -2350,6 +2401,87 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {showProblemStatement && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 500,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+          }}
+          onClick={() => setShowProblemStatement(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: 720,
+              width: "100%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              background: "var(--panel)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "24px 28px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <div
+                  className="mono"
+                  style={{ fontSize: 10, letterSpacing: "0.12em", color: "#f59e0b", marginBottom: 4 }}
+                >
+                  AI FOR CLIMATE CHANGE
+                </div>
+                <h2 style={{ margin: 0, fontSize: 20, color: "var(--text)" }}>
+                  Why UNILOG Exists
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowProblemStatement(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-3)",
+                  fontSize: 18,
+                  cursor: "pointer",
+                  lineHeight: 1,
+                  padding: 4,
+                }}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: 13, lineHeight: 1.65, color: "var(--text-2)", margin: "0 0 14px" }}>
+              Climate change is making global shipping increasingly volatile: warming oceans and
+              shifting storm patterns are driving more frequent extreme-weather disruptions,
+              layered on top of chokepoint conflicts and geopolitical shocks. India is dangerously
+              exposed — 95% of its trade moves by sea through a handful of chokepoints (the Red
+              Sea, Suez, and the Strait of Malacca), so a single storm, blockage, or conflict can
+              disrupt the country's exports all at once. When the Red Sea crisis hit,
+              Kolkata–Rotterdam freight rates jumped from $500 to $4,000, and India's exports fell
+              9.3% in a single month.
+            </p>
+
+            <p style={{ fontSize: 13, lineHeight: 1.65, color: "var(--text-2)", margin: 0 }}>
+              The core failure is timing: logistics teams track disruptions manually, scanning
+              news, weather sites, and government advisories — and by the time a disruption is
+              noticed, shipments are already committed to an at-risk route. This causes delays,
+              demurrage charges, spoiled cargo, and reactive last-minute reroutes that burn far
+              more fuel than a planned one. No affordable, real-time, AI-driven tool exists today
+              that connects a "world event" to a "specific shipment's risk" to an "actionable,
+              lower-emission alternative" — leaving India's exporters, especially MSMEs,
+              structurally unprepared for a climate that is only getting less predictable.
+            </p>
+          </div>
+        </div>
+      )}
 
       {(dataLoading || dataError) && (
         <div

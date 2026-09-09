@@ -104,13 +104,17 @@ ALERTS = [
         "time": "05:30", "type": "storm forecast", "location": "Strait of Malacca",
         "route": "Shanghai - Singapore", "severity": 4,
         "summary": "Tropical cyclone system forming in the Andaman Sea, forecast to intensify and track across the Strait of Malacca within the next day and a half.",
-        "age_min": 10, "is_forecast": True, "eta_hours": 36, "dismissed": False,
+        "age_min": 10, "is_forecast": True, "eta_hours": 36,
+        "causal_chain": "Warming sea-surface temperatures|Increased evaporation & moisture uptake|Tropical cyclone formation & intensification|Strait of Malacca transit disrupted",
+        "dismissed": False,
     },
     {
         "time": "08:45", "type": "flood forecast", "location": "Jawaharlal Nehru Port (JNPT)",
         "route": "Mumbai - Jebel Ali", "severity": 3,
         "summary": "Heavy monsoon rainfall forecast over Mumbai's coastal belt; rising flood risk expected to slow port operations and loading.",
-        "age_min": 20, "is_forecast": True, "eta_hours": 18, "dismissed": False,
+        "age_min": 20, "is_forecast": True, "eta_hours": 18,
+        "causal_chain": "Heavy monsoon rainfall over the coast|Rising river & storm-surge water levels|Coastal/port flooding risk|JNPT loading operations disrupted",
+        "dismissed": False,
     },
 ]
 
