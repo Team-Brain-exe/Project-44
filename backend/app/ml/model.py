@@ -4,6 +4,7 @@ Loads the trained model once at import time, exposes predict().
 
 import joblib
 import pathlib
+import pandas as pd
 
 from app.ml.features import FEATURE_NAMES, build_features, features_to_dict
 
@@ -20,22 +21,26 @@ def _get_model():
     return _model
 
 
+
+
 def predict(data: dict) -> dict:
     model = _get_model()
     feature_values = build_features(data)
 
-    score = float(model.predict([feature_values])[0])
-    score = max(0.0, min(100.0, score))
+    # Convert features to DataFrame with correct column names
+    feature_frame = pd.DataFrame(
+        [feature_values],
+        columns=FEATURE_NAMES,
+    )
 
-    tree_preds = [
-        float(tree[0].predict([feature_values])[0])
-        for tree in model.estimators_
-    ]
-    spread = max(tree_preds) - min(tree_preds) if tree_preds else 0
-    confidence = max(0.0, min(1.0, 1 - (spread / 100)))
+    # Predict climate risk score
+    raw_score = float(model.predict(feature_frame)[0])
+
+    # Keep risk score between 0 and 100
+    score = max(0.0, min(100.0, raw_score))
 
     return {
         "score": round(score, 1),
-        "confidence": round(confidence, 2),
+        "confidence": None,
         "features": features_to_dict(feature_values),
     }
