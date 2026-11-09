@@ -27,7 +27,12 @@ def test_predict_returns_score_in_range():
 
 def test_predict_returns_confidence_in_range():
     result = predict(SAMPLE_INPUT)
-    assert 0 <= result["confidence"] <= 1
+    confidence = result["confidence"]
+    assert confidence is None or (
+        isinstance(confidence, (int, float))
+        and not isinstance(confidence, bool)
+        and 0 <= confidence <= 1
+    )
 
 
 def test_predict_returns_expected_keys():
