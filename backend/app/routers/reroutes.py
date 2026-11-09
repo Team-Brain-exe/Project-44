@@ -12,7 +12,28 @@ router = APIRouter(prefix="/reroutes", tags=["reroutes"])
 
 @router.get("", response_model=list[RerouteOut])
 def list_reroutes(db: Session = Depends(get_db)):
-    return db.query(Reroute).all()
+    suggestions = db.query(Reroute).all()
+    routes = {r.id: r for r in db.query(Route).all()}
+
+    from app.services.reroute_engine import DEMO_ALTERNATIVES
+
+    return [
+        suggestion
+        for suggestion in suggestions
+        if (
+            suggestion.applied
+            or suggestion.original_route_id not in routes
+            or (
+                (routes[suggestion.original_route_id].origin,
+                 routes[suggestion.original_route_id].destination)
+                not in DEMO_ALTERNATIVES
+            )
+            or suggestion.via in DEMO_ALTERNATIVES.get(
+                (routes[suggestion.original_route_id].origin,
+                 routes[suggestion.original_route_id].destination), ()
+            )
+        )
+    ]
 
 
 @router.post("", response_model=RerouteOut)
