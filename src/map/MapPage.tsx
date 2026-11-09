@@ -1,6 +1,6 @@
 // src/map/MapPage.tsx
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -12,6 +12,7 @@ import {
 } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import ReplayControls from "./ReplayControls";
 
 import {
   useVessels,
@@ -87,7 +88,29 @@ function InvalidateMapSize() {
  * minHeight 0, so it works in both the full-page Live Map and the
  * smaller Dashboard map panel).
  */
+function getDemoReplaySeverity(
+  corridor: { id: string; severity: "critical" | "high" | "medium" | "low" },
+  date: Date,
+): "critical" | "high" | "medium" | "low" {
+  // Illustrative demo scenarios only; these are not verified historical records.
+  const time = date.getTime();
+
+  if (corridor.id === "corridor-redsea-suez") {
+    if (time < Date.UTC(2023, 9, 1)) return "low";
+    if (time < Date.UTC(2023, 11, 1)) return "medium";
+    if (time < Date.UTC(2024, 2, 1)) return "high";
+    return "critical";
+  }
+
+  if (corridor.id === "corridor-malacca") {
+    return time < Date.UTC(2024, 0, 1) ? "low" : "medium";
+  }
+
+  return corridor.severity;
+}
+
 export function LiveMapCanvas({ alerts = [] }: { alerts?: AlertLike[] }) {
+  const [replayDate, setReplayDate] = useState(() => new Date());
   const { data: vessels, loading: vesselsLoading } = useVessels();
   const {
     data: aircraft,
@@ -305,6 +328,11 @@ export function LiveMapCanvas({ alerts = [] }: { alerts?: AlertLike[] }) {
         )}
       </div>
 
+      <ReplayControls
+        date={replayDate}
+        onDateChange={setReplayDate}
+      />
+
       {/* Error indicator */}
       {aircraftError && (
         <div
@@ -348,13 +376,9 @@ export function LiveMapCanvas({ alerts = [] }: { alerts?: AlertLike[] }) {
         <InvalidateMapSize />
 
         <TileLayer
-          url={`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${
-            CARTO_API_KEY ? `?key=${CARTO_API_KEY}` : ""
-          }`}
-          attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; OpenStreetMap contributors'
         />
-
-        {/* Graticule */}
         {graticule.map((line, i) => (
           <Polyline
             key={`grid-${i}`}
@@ -369,12 +393,13 @@ export function LiveMapCanvas({ alerts = [] }: { alerts?: AlertLike[] }) {
 
         {/* Risk corridors */}
         {corridors.map((corridor) => {
+          const severity = getDemoReplaySeverity(corridor, replayDate);
           const color =
-            corridor.severity === "critical"
+            severity === "critical"
               ? "#ef4444"
-              : corridor.severity === "high"
+              : severity === "high"
                 ? "#f59e0b"
-                : corridor.severity === "medium"
+                : severity === "medium"
                   ? "#f97316"
                   : "#22c55e";
 
@@ -392,7 +417,7 @@ export function LiveMapCanvas({ alerts = [] }: { alerts?: AlertLike[] }) {
               <Tooltip sticky>
                 <strong>{corridor.name}</strong>
                 <br />
-                Risk: {corridor.severity.toUpperCase()}
+                Risk: {severity.toUpperCase()}
               </Tooltip>
             </Polyline>
           );
@@ -602,4 +627,3 @@ export default function MapPage({ alerts = [] }: { alerts?: AlertLike[] }) {
     </div>
   );
 }
-
