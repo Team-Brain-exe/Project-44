@@ -1,5 +1,26 @@
 import { useState, useEffect, useRef } from "react"
 import LiveMapPage, { LiveMapCanvas } from "./map/MapPage"
+import {
+  fetchDashboardData,
+  dismissAlertApi,
+  setRouteWatchedApi,
+  applyRerouteApi,
+  dismissRerouteApi,
+  generateReroutesApi,
+  adaptReroute,
+  notifyTeamApi,
+  BACKEND_URL,
+} from "./services/project44"
+import { WeatherBadge, classifyWeather } from "./weather"
+import {
+  simulateCyclone,
+  resetClimateSimulation,
+  getSimulationStatus,
+  getMaritimeRecommendation,
+  getAvailableRoutes,
+  type BackendRoute,
+  type MaritimeRecommendation,
+} from "./services/climateAI"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Severity = "critical" | "high" | "medium" | "low"
@@ -14,6 +35,9 @@ type AlertEvent = {
   severity: Severity
   summary: string
   ageMin: number
+  isForecast?: boolean
+  etaHours?: number | null
+  causalChain?: string[] | null
   dismissed?: boolean
 }
 
@@ -37,6 +61,7 @@ type Reroute = {
   via: string
   extraDays: number
   extraCost: string
+  extraCO2: string
   confidence: number
   reason: string
   applied?: boolean
@@ -50,29 +75,6 @@ type MLScore = {
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
-
-const INITIAL_ALERTS: AlertEvent[] = [
-  { id: 1, time: "14:32", type: "CONFLICT", location: "Red Sea", route: "JNPT → Rotterdam", severity: "critical", summary: "Houthi drone strike on cargo vessel near Bab-el-Mandeb Strait. 3 ships diverted.", ageMin: 4 },
-  { id: 2, time: "13:58", type: "PORT STRIKE", location: "Colombo, Sri Lanka", route: "Chennai → Singapore", severity: "high", summary: "Port workers' strike entering day 2. 40+ vessels at anchor. Estimated 3-day backlog.", ageMin: 38 },
-  { id: 3, time: "12:15", type: "WEATHER", location: "Malacca Strait", route: "Mundra → Shanghai", severity: "medium", summary: "Tropical storm Kaveri forming. BMKG advisory issued. Expected passage in 18–24h.", ageMin: 101 },
-  { id: 4, time: "11:44", type: "SANCTIONS", location: "Suez Canal", route: "Kolkata → Hamburg", severity: "high", summary: "New EU sanctions on 4 vessel operators. Customs delay of 48–72h expected at Port Said.", ageMin: 112 },
-  { id: 5, time: "10:20", type: "CANAL CLOSURE", location: "Panama Canal", route: "Mumbai → Los Angeles", severity: "medium", summary: "Water level restriction limiting daily transits to 22 ships. Queue: 67 vessels.", ageMin: 196 },
-  { id: 6, time: "09:05", type: "TARIFF CHANGE", location: "Cape of Good Hope", route: "All India-Europe", severity: "low", summary: "South Africa raises anchorage fees 12% effective Sept 1. Affects rerouted Red Sea traffic.", ageMin: 271 },
-]
-
-const INITIAL_ROUTES: Route[] = [
-  { id: "R1", from: "JNPT", to: "Rotterdam", via: "Suez Canal", risk: "critical", score: 91, status: "AT RISK", freight: "₹3,840/TEU", delay: "+18d", watched: true },
-  { id: "R2", from: "Mundra", to: "Shanghai", via: "Malacca Strait", risk: "medium", score: 58, status: "MONITOR", freight: "₹1,200/TEU", delay: "+2d", watched: true },
-  { id: "R3", from: "Chennai", to: "Singapore", via: "Colombo", risk: "high", score: 74, status: "DISRUPTED", freight: "₹890/TEU", delay: "+4d", watched: true },
-  { id: "R4", from: "Kolkata", to: "Hamburg", via: "Red Sea", risk: "critical", score: 88, status: "AT RISK", freight: "₹4,020/TEU", delay: "+21d", watched: false },
-  { id: "R5", from: "Cochin", to: "Jeddah", via: "Arabian Sea", risk: "low", score: 22, status: "CLEAR", freight: "₹640/TEU", delay: "—", watched: false },
-]
-
-const INITIAL_REROUTES: Reroute[] = [
-  { id: 1, original: "JNPT → Rotterdam via Suez", alt: "JNPT → Rotterdam via Cape of Good Hope", via: "Durban (bunker stop)", extraDays: 14, extraCost: "+₹1,240/TEU", confidence: 94, reason: "Avoids Bab-el-Mandeb conflict zone entirely. Durban bunkering available." },
-  { id: 2, original: "Kolkata → Hamburg via Red Sea", alt: "Kolkata → Hamburg via Colombo → Cape", via: "Colombo tranship", extraDays: 19, extraCost: "+₹1,580/TEU", confidence: 87, reason: "Cape route adds 19 days but eliminates conflict exposure. Strike risk at Colombo: moderate." },
-  { id: 3, original: "Chennai → Singapore via Colombo", alt: "Chennai → Singapore direct", via: "Direct sailing", extraDays: 1, extraCost: "+₹120/TEU", confidence: 78, reason: "Bypass Colombo transhipment entirely during port strike. Minor schedule impact." },
-]
 
 const STATS = [
   { label: "India trade by sea", value: "95%", delta: null, sub: "of total volume" },
@@ -170,29 +172,25 @@ function linearRegression(xs: number[], ys: number[]) {
   return { slope, intercept, r2: ssTot > 0 ? 1 - ssRes / ssTot : 1 }
 }
 
-async function callClaude(prompt: string): Promise<string> {
-  const key = (import.meta as any).env?.VITE_ANTHROPIC_API_KEY
-  if (!key) throw new Error("NO_KEY")
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+// Calls the backend's /ai/risk-analysis endpoint, which runs the Gemini
+// call server-side. The API key never touches the browser bundle.
+async function callRiskAnalysis(payload: {
+  alerts: { severity: string; type: string; location: string; summary: string }[]
+  top_location?: string
+  top_score?: number
+  top_confidence?: number
+}): Promise<string> {
+  const res = await fetch(`${BACKEND_URL}/ai/risk-analysis`, {
     method: "POST",
-    headers: {
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 320,
-      messages: [{ role: "user", content: prompt }],
-    }),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error((err as any)?.error?.message ?? `HTTP ${res.status}`)
+    throw new Error((err as any)?.detail ?? `HTTP ${res.status}`)
   }
   const data = await res.json()
-  return (data.content?.[0]?.text as string) ?? "No response."
+  return (data.text as string) ?? "No response."
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -224,6 +222,63 @@ function SeverityBadge({ sev }: { sev: Severity }) {
     >
       {sev.toUpperCase()}
     </span>
+  )
+}
+
+// Climate early-warning badge: distinguishes a forecast (something predicted
+// to happen, with a lead time) from a live/active alert (already happening).
+function ForecastBadge({ etaHours }: { etaHours: number | null | undefined }) {
+  if (etaHours == null) return null
+  return (
+    <span
+      className="mono"
+      style={{
+        fontSize: 8,
+        fontWeight: 700,
+        letterSpacing: "0.08em",
+        padding: "2px 6px",
+        borderRadius: 3,
+        background: "rgba(56,189,248,0.12)",
+        color: "#38bdf8",
+        border: "1px solid #38bdf840",
+        whiteSpace: "nowrap",
+      }}
+    >
+      ⚠ FORECAST · IMPACT IN {etaHours}H
+    </span>
+  )
+}
+
+// Shows *why* a forecast is being made: the chain of climate factors leading
+// from cause to shipping impact (e.g. warmer seas -> more moisture -> a
+// cyclone -> a blocked strait). Renders as connected stage chips so the
+// reasoning is visible, not just the conclusion.
+function CausalChain({ stages }: { stages: string[] | null | undefined }) {
+  if (!stages || stages.length === 0) return null
+  return (
+    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
+      {stages.map((stage, i) => (
+        <span key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span
+            className="mono"
+            style={{
+              fontSize: 9,
+              padding: "3px 7px",
+              borderRadius: 3,
+              background: "var(--panel-2)",
+              border: "1px solid var(--border-light)",
+              color: "var(--text-2)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {stage}
+          </span>
+          {i < stages.length - 1 && (
+            <span style={{ color: "var(--text-3)", fontSize: 10 }}>→</span>
+          )}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -864,9 +919,141 @@ function RoutePlannerPage() {
   const [to, setTo] = useState("Rotterdam")
   const [cargo, setCargo] = useState("General Cargo")
   const [planned, setPlanned] = useState(false)
+  const [selectedRoute, setSelectedRoute] = useState<number | null>(null)
+  const [backendRoutes, setBackendRoutes] = useState<BackendRoute[]>([])
+  const [routesLoading, setRoutesLoading] = useState(true)
+  const [routesError, setRoutesError] = useState<string | null>(null)
 
-  const ports = ["JNPT", "Mundra", "Chennai", "Kolkata", "Cochin"]
-  const destinations = ["Rotterdam", "Hamburg", "Shanghai", "Singapore", "Los Angeles", "Jeddah"]
+  useEffect(() => {
+    let active = true
+    getAvailableRoutes()
+      .then(routes => {
+        if (active) setBackendRoutes(routes)
+      })
+      .catch(error => {
+        if (active) setRoutesError(error instanceof Error ? error.message : "Failed to load routes")
+      })
+      .finally(() => {
+        if (active) setRoutesLoading(false)
+      })
+    return () => { active = false }
+  }, [])
+
+  // Live Climate AI integration
+  const [aiRecommendation, setAiRecommendation] =
+    useState<MaritimeRecommendation | null>(null)
+  const [climateLoading, setClimateLoading] = useState(false)
+  const [climateError, setClimateError] = useState<string | null>(null)
+  const [cycloneActive, setCycloneActive] = useState(false)
+  const [riskBefore, setRiskBefore] = useState<number | null>(null)
+  const [riskAfter, setRiskAfter] = useState<number | null>(null)
+
+
+
+  const demoMaritimeRoutes = [
+    {
+      route_id: "3",
+      distance_nm: 8500,
+      speed_knots: 18,
+      fuel_tonnes_per_day: 40,
+      ml_features: {
+        severity: 1,
+        age_hours: 24,
+        route_overlap: 0.1,
+        is_chokepoint: 0,
+        freight_value_musd: 15,
+        vessel_count_nearby: 1,
+        weather_severity: 0,
+        port_congestion_pct: 15,
+      },
+    },
+    {
+      route_id: "alternative-A",
+      distance_nm: 9000,
+      speed_knots: 18,
+      fuel_tonnes_per_day: 40,
+      ml_features: {
+        severity: 1,
+        age_hours: 24,
+        route_overlap: 0.1,
+        is_chokepoint: 0,
+        freight_value_musd: 15,
+        vessel_count_nearby: 1,
+        weather_severity: 0,
+        port_congestion_pct: 15,
+      },
+    },
+  ]
+
+  const calculateAIRoutes = async () => {
+    setClimateLoading(true)
+    setClimateError(null)
+    try {
+      const result = await getMaritimeRecommendation(demoMaritimeRoutes)
+      setAiRecommendation(result)
+      const status = await getSimulationStatus()
+      const event = status.active_events.find(e => e.route_id === 3)
+      setCycloneActive(Boolean(event))
+      setRiskBefore(event?.risk_before ?? null)
+      setRiskAfter(event?.risk_after ?? null)
+    } catch (error) {
+      setClimateError(error instanceof Error ? error.message : "Request failed")
+    } finally {
+      setClimateLoading(false)
+    }
+  }
+
+  const triggerCyclone = async () => {
+    setClimateLoading(true)
+    setClimateError(null)
+    try {
+      const simulation = await simulateCyclone(3)
+      setCycloneActive(true)
+      setRiskBefore(simulation.risk_before.score)
+      setRiskAfter(simulation.risk_after.score)
+      setAiRecommendation(await getMaritimeRecommendation(demoMaritimeRoutes))
+    } catch (error) {
+      setClimateError(error instanceof Error ? error.message : "Simulation failed")
+    } finally {
+      setClimateLoading(false)
+    }
+  }
+
+  const resetCyclone = async () => {
+    setClimateLoading(true)
+    setClimateError(null)
+    try {
+      await resetClimateSimulation()
+      setCycloneActive(false)
+      setRiskBefore(null)
+      setRiskAfter(null)
+      setAiRecommendation(await getMaritimeRecommendation(demoMaritimeRoutes))
+    } catch (error) {
+      setClimateError(error instanceof Error ? error.message : "Reset failed")
+    } finally {
+      setClimateLoading(false)
+    }
+  }
+
+  // Populate route selectors from the backend instead of illustrative port lists.
+  const ports = [...new Set(backendRoutes.map(route => route.origin))]
+  const destinations = [...new Set(
+    backendRoutes.filter(route => route.origin === from).map(route => route.destination)
+  )]
+
+  useEffect(() => {
+    if (ports.length > 0 && !ports.includes(from)) {
+      setFrom(ports[0])
+      setPlanned(false)
+    }
+  }, [backendRoutes, from])
+
+  useEffect(() => {
+    if (destinations.length > 0 && !destinations.includes(to)) {
+      setTo(destinations[0])
+      setPlanned(false)
+    }
+  }, [backendRoutes, from, to])
   const cargoTypes = ["General Cargo", "Basmati Rice", "Petroleum", "Textiles", "Chemicals", "Machinery"]
 
   const options = [
@@ -896,9 +1083,189 @@ function RoutePlannerPage() {
     },
   ]
 
+  const exportRoutePdf = (opt: typeof options[number]) => {
+    const w = window.open("", "_blank")
+    if (!w) return
+    w.document.write(`
+      <html>
+        <head>
+          <title>Route Summary - ${from} to ${to}</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; padding: 40px; color: #111; }
+            h1 { font-size: 20px; margin-bottom: 4px; }
+            .sub { color: #666; margin-bottom: 24px; font-size: 13px; }
+            table { border-collapse: collapse; width: 100%; }
+            td { padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+            td:first-child { color: #666; width: 160px; }
+            .note { margin-top: 16px; font-size: 13px; color: #444; }
+          </style>
+        </head>
+        <body>
+          <h1>UNILOG Route Summary</h1>
+          <div class="sub">${from} &rarr; ${to} &middot; ${cargo}</div>
+          <table>
+            <tr><td>Route</td><td>${opt.route}</td></tr>
+            <tr><td>Transit Time</td><td>${opt.days} days</td></tr>
+            <tr><td>Cost</td><td>${opt.cost}</td></tr>
+            <tr><td>ML Risk Score</td><td>${opt.riskScore} / 100 (${opt.risk})</td></tr>
+          </table>
+          <div class="note">${opt.note}</div>
+        </body>
+      </html>
+    `)
+    w.document.close()
+    w.focus()
+    w.print()
+  }
+
   return (
     <div style={{ padding: 24, overflowY: "auto", height: "100%" }}>
       <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20 }}>Route Planner</h2>
+
+      <div style={{
+        background: "var(--panel)",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: 18,
+        marginBottom: 20,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+          LIVE CLIMATE AI DEMO
+        </div>
+        <p style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 14 }}>
+          Singapore → Los Angeles (Route 3) versus a hypothetical alternative.
+          Prototype ML risk and estimated maritime CO₂ using demo inputs.
+          Climate events are simulated, not live weather.
+        </p>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          <Btn onClick={calculateAIRoutes}>
+            CALCULATE AI ROUTES
+          </Btn>
+          <Btn onClick={triggerCyclone}>
+            SIMULATE CYCLONE
+          </Btn>
+          <Btn onClick={resetCyclone}>
+            RESET SIMULATION
+          </Btn>
+        </div>
+
+        {climateLoading && (
+          <p style={{ fontSize: 11 }}>Processing climate AI request...</p>
+        )}
+
+        {climateError && (
+          <p role="alert" style={{ fontSize: 11, color: "#ef4444" }}>
+            {climateError}
+          </p>
+        )}
+
+        <div style={{ fontSize: 11, marginBottom: 12 }}>
+          Simulation: {cycloneActive ? "ACTIVE — CYCLONE" : "INACTIVE"}
+          {riskBefore !== null && riskAfter !== null && (
+            <span style={{ marginLeft: 12 }}>
+              Risk: {riskBefore.toFixed(1)} → {riskAfter.toFixed(1)}
+            </span>
+          )}
+        </div>
+
+        {aiRecommendation && (
+          <div>
+            <div style={{
+              fontSize: 12,
+              fontWeight: 700,
+              marginBottom: 10,
+              color: "#22c55e",
+            }}>
+              Recommended: {aiRecommendation.recommended_route ?? "Manual review required"}
+            </div>
+
+            <div style={{ display: "grid", gap: 10 }}>
+              {aiRecommendation.routes.map(route => (
+                <div key={route.route_id} style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  padding: 12,
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+                    {route.route_id === "3"
+                      ? "Route 3 — Singapore to Los Angeles"
+                      : "Alternative A — Hypothetical comparison"}
+                  </div>
+
+                  <div style={{
+                    display: "flex",
+                    gap: 18,
+                    flexWrap: "wrap",
+                    fontSize: 11,
+                  }}>
+                    <span>Risk: {route.risk_score.toFixed(1)}/100</span>
+                    <span>CO₂: {route.co2_tonnes.toFixed(1)} tonnes</span>
+                    <span>Voyage: {route.voyage_hours.toFixed(1)} hours</span>
+                    <span>
+                      {route.safety_status === "eligible"
+                        ? "Eligible"
+                        : "High risk"}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    fontSize: 10,
+                    color: "var(--text-3)",
+                    marginTop: 8,
+                  }}>
+                    Source: {route.risk_source === "simulated_climate_event"
+                      ? "Simulated climate event"
+                      : "ML prediction"}
+                  </div>
+                  <p style={{ fontSize: 10, marginTop: 6 }}>
+                    {route.explanation}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {aiRecommendation.warning && (
+              <p style={{ color: "#f59e0b", fontSize: 11, marginTop: 10 }}>
+                {aiRecommendation.warning}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <section style={{
+        background: "var(--panel)", border: "1px solid var(--border)",
+        borderRadius: 8, padding: 18, marginBottom: 20,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+          AVAILABLE BACKEND ROUTES
+        </div>
+        <p style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 12 }}>
+          Routes loaded from the database. The planner below and the climate AI comparison
+          remain separate demonstrations; these records do not contain maritime distances
+          or vessel fuel data required for carbon estimates.
+        </p>
+        {routesLoading && <p style={{ fontSize: 11 }}>Loading routes...</p>}
+        {routesError && <p role="alert" style={{ color: "#ef4444", fontSize: 11 }}>{routesError}</p>}
+        {!routesLoading && !routesError && backendRoutes.length === 0 && (
+          <p style={{ fontSize: 11 }}>No backend routes available.</p>
+        )}
+        <div style={{ display: "grid", gap: 8 }}>
+          {backendRoutes.map(route => (
+            <div key={route.id} style={{
+              padding: 10, borderRadius: 6, border: "1px solid var(--border)",
+              fontSize: 11, display: "flex", flexWrap: "wrap", gap: 12,
+            }}>
+              <strong>#{route.id} · {route.origin} → {route.destination}</strong>
+              <span>Via {route.via}</span>
+              <span>Risk: {route.risk}</span>
+              <span>Status: {route.status}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {[
@@ -946,7 +1313,7 @@ function RoutePlannerPage() {
             </div>
           ))}
           <button
-            onClick={() => setPlanned(true)}
+            onClick={() => { setPlanned(true); setSelectedRoute(null) }}
             style={{
               marginTop: 4,
               padding: "10px",
@@ -983,7 +1350,7 @@ function RoutePlannerPage() {
                 key={i}
                 style={{
                   background: "var(--panel)",
-                  border: `1px solid ${i === 1 ? "#22c55e40" : "var(--border)"}`,
+                  border: `1px solid ${selectedRoute === i ? "#3b82f6" : i === 1 ? "#22c55e40" : "var(--border)"}`,
                   borderLeft: `2px solid ${SEV_COLOR[opt.risk]}`,
                   borderRadius: 6,
                   padding: 16,
@@ -1023,8 +1390,10 @@ function RoutePlannerPage() {
                 </div>
                 <RiskBar score={opt.riskScore} sev={opt.risk} />
                 <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                  <Btn>SELECT ROUTE</Btn>
-                  <Btn>EXPORT PDF</Btn>
+                  <Btn onClick={() => setSelectedRoute(i)}>
+                    {selectedRoute === i ? "\u2713 SELECTED" : "SELECT ROUTE"}
+                  </Btn>
+                  <Btn onClick={() => exportRoutePdf(opt)}>EXPORT PDF</Btn>
                 </div>
               </div>
             ))}
@@ -1050,7 +1419,7 @@ function RoutePlannerPage() {
   )
 }
 
-function AlertsPage({ alerts, onDismiss }: { alerts: AlertEvent[]; onDismiss: (id: number) => void }) {
+function AlertsPage({ alerts, onDismiss, onNotify }: { alerts: AlertEvent[]; onDismiss: (id: number) => void; onNotify: (id: number) => void }) {
   const [filter, setFilter] = useState<Severity | "all">("all")
   const filtered = filter === "all" ? alerts : alerts.filter(a => a.severity === filter)
 
@@ -1106,6 +1475,7 @@ function AlertsPage({ alerts, onDismiss }: { alerts: AlertEvent[]; onDismiss: (i
                 <span className="mono" style={{ fontSize: 9, color: "var(--text-3)" }}>
                   {a.time}
                 </span>
+                {a.isForecast && <ForecastBadge etaHours={a.etaHours} />}
                 <span
                   className="mono"
                   style={{
@@ -1120,9 +1490,10 @@ function AlertsPage({ alerts, onDismiss }: { alerts: AlertEvent[]; onDismiss: (i
                 >
                   {a.type}
                 </span>
+                <WeatherBadge kind={classifyWeather(a)} />
                 <SeverityBadge sev={a.severity} />
                 <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                  <Btn small>NOTIFY TEAM</Btn>
+                  <Btn small onClick={() => onNotify(a.id)}>NOTIFY TEAM</Btn>
                   <Btn small danger onClick={() => onDismiss(a.id)}>
                     DISMISS
                   </Btn>
@@ -1133,6 +1504,7 @@ function AlertsPage({ alerts, onDismiss }: { alerts: AlertEvent[]; onDismiss: (i
                 {a.route}
               </div>
               <div style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.6 }}>{a.summary}</div>
+              {a.isForecast && <CausalChain stages={a.causalChain} />}
             </div>
           ))}
         {filtered.filter(a => !a.dismissed).length === 0 && (
@@ -1185,7 +1557,7 @@ function SettingsPage() {
               <div style={{ fontSize: 12, fontWeight: 500, textTransform: "capitalize", marginBottom: 2 }}>
                 {ch === "sms" ? "SMS" : ch.charAt(0).toUpperCase() + ch.slice(1)}
               </div>
-              <div style={{ fontSize: 10, color: "var(--text-3)" }}>{ch === "email" ? "rajesh@freightco.in" : "+91 98200 12345"}</div>
+              <div style={{ fontSize: 10, color: "var(--text-3)" }}>{ch === "email" ? "aparnadhiraj07@gmail.com" : "+91 73566 75700"}</div>
             </div>
             <div
               onClick={() => setNotif(n => ({ ...n, [ch]: !n[ch] }))}
@@ -1345,6 +1717,8 @@ function DashboardView({
   onToggleWatch,
   onApplyReroute,
   onDismissReroute,
+  onGenerateReroutes,
+  generatingReroutes,
   mlScores,
   mlRunning,
   aiAnalysis,
@@ -1362,6 +1736,8 @@ function DashboardView({
   onToggleWatch: (id: string) => void
   onApplyReroute: (id: number) => void
   onDismissReroute: (id: number) => void
+  onGenerateReroutes: () => void
+  generatingReroutes: boolean
   mlScores: Record<number, MLScore>
   mlRunning: boolean
   aiAnalysis: string
@@ -1388,7 +1764,7 @@ function DashboardView({
               overflow: "hidden",
             }}
           >
-            <LiveMapCanvas />
+            <LiveMapCanvas alerts={alerts} />
           </div>
           {mlRunning && (
             <div style={{ position: "absolute", top: 44, right: 12 }}>
@@ -1503,6 +1879,7 @@ function DashboardView({
                       <span className="mono" style={{ fontSize: 9, color: "var(--text-3)" }}>
                         {a.time}
                       </span>
+                      {a.isForecast && <ForecastBadge etaHours={a.etaHours} />}
                       <span
                         className="mono"
                         style={{
@@ -1517,6 +1894,7 @@ function DashboardView({
                       >
                         {a.type}
                       </span>
+                      <WeatherBadge kind={classifyWeather(a)} />
                       <SeverityBadge sev={a.severity} />
                       {ml && (
                         <button
@@ -1644,6 +2022,28 @@ function DashboardView({
             {reroutes.filter(r => !r.applied && !r.dismissed).length} suggestions
           </span>
         </div>
+        <div style={{ padding: "8px 14px 0" }}>
+          <button
+            onClick={onGenerateReroutes}
+            disabled={generatingReroutes}
+            style={{
+              width: "100%",
+              padding: "6px 10px",
+              fontSize: 9,
+              fontFamily: "DM Mono, monospace",
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              background: "var(--primary-dim)",
+              color: "var(--primary)",
+              border: "1px solid var(--primary)40",
+              borderRadius: 4,
+              cursor: generatingReroutes ? "default" : "pointer",
+              opacity: generatingReroutes ? 0.6 : 1,
+            }}
+          >
+            {generatingReroutes ? "GENERATING…" : "⟳ GENERATE SUGGESTIONS"}
+          </button>
+        </div>
 
         <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
           {reroutes
@@ -1674,12 +2074,15 @@ function DashboardView({
                 <div className="mono" style={{ fontSize: 10, color: "var(--text)", fontWeight: 500, marginBottom: 4 }}>
                   {rr.alt}
                 </div>
-                <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                   <span className="mono" style={{ fontSize: 9, color: "#f59e0b" }}>
                     +{rr.extraDays}d
                   </span>
                   <span className="mono" style={{ fontSize: 9, color: "#f59e0b" }}>
                     {rr.extraCost}
+                  </span>
+                  <span className="mono" style={{ fontSize: 9, color: "#fb923c" }}>
+                    {rr.extraCO2}
                   </span>
                   <span className="mono" style={{ fontSize: 9, color: "var(--text-3)" }}>
                     via {rr.via}
@@ -1747,12 +2150,12 @@ function DashboardView({
             })}
         </div>
 
-        {/* Claude AI Analysis */}
+        {/* Groq AI Analysis */}
         <div style={{ borderTop: "1px solid var(--border)", padding: "10px 14px" }}>
           {aiAnalysis ? (
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: "#22c55e", letterSpacing: "0.08em" }}>✦ CLAUDE AI · HAIKU</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#22c55e", letterSpacing: "0.08em" }}>✦ GROQ AI · LLAMA 3.3</span>
                 <button
                   onClick={onGenerateAI}
                   style={{
@@ -1801,7 +2204,7 @@ function DashboardView({
 
         <div style={{ borderTop: "1px solid var(--border)", padding: "5px 14px" }}>
           <span className="mono" style={{ fontSize: 7, color: "var(--text-3)" }}>
-            sigmoid risk · z-score anomaly · LR forecast · claude haiku
+            sigmoid risk · z-score anomaly · LR forecast · groq llama-3.3
           </span>
         </div>
       </div>
@@ -1879,6 +2282,7 @@ function MapPage({
                     <span className="mono" style={{ fontSize: 8, color: "var(--text-3)" }}>
                       {a.time}
                     </span>
+                    {a.isForecast && <ForecastBadge etaHours={a.etaHours} />}
                     {ml && (
                       <span className="mono" style={{ marginLeft: "auto", fontSize: 8, color: SEV_COLOR[a.severity] }}>
                         ML {ml.score}
@@ -1901,9 +2305,11 @@ function MapPage({
 export default function App() {
   const [page, setPage] = useState<NavPage>("dashboard")
   const [activeAlert, setActiveAlert] = useState<number | null>(1)
-  const [alerts, setAlerts] = useState<AlertEvent[]>(INITIAL_ALERTS)
-  const [routes, setRoutes] = useState<Route[]>(INITIAL_ROUTES)
-  const [reroutes, setReroutes] = useState<Reroute[]>(INITIAL_REROUTES)
+  const [alerts, setAlerts] = useState<AlertEvent[]>([])
+  const [routes, setRoutes] = useState<Route[]>([])
+  const [reroutes, setReroutes] = useState<Reroute[]>([])
+  const [dataLoading, setDataLoading] = useState(true)
+  const [dataError, setDataError] = useState<string | null>(null)
   const [currentTime, setCurrentTime] = useState("")
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchVal, setSearchVal] = useState("")
@@ -1913,10 +2319,14 @@ export default function App() {
   const [mlRunning, setMlRunning] = useState(false)
   const [expandedMLId, setExpandedMLId] = useState<number | null>(null)
 
+  // Reroute generation state
+  const [generatingReroutes, setGeneratingReroutes] = useState(false)
+
   // Sidebar collapse state
   const [navCollapsed, setNavCollapsed] = useState(false)
+  const [showProblemStatement, setShowProblemStatement] = useState(false)
 
-  // Claude AI state
+  // Gemini AI state
   const [aiAnalysis, setAiAnalysis] = useState("")
   const [aiLoading, setAiLoading] = useState(false)
 
@@ -1925,6 +2335,28 @@ export default function App() {
     update()
     const id = setInterval(update, 1000)
     return () => clearInterval(id)
+  }, [])
+
+  // Load real data from the backend on mount, replacing the old hardcoded mocks.
+  useEffect(() => {
+    let cancelled = false
+    fetchDashboardData()
+      .then(data => {
+        if (cancelled) return
+        setAlerts(data.alerts)
+        setRoutes(data.routes)
+        setReroutes(data.reroutes)
+        setDataError(null)
+      })
+      .catch(err => {
+        if (!cancelled) setDataError(err instanceof Error ? err.message : "Failed to load data")
+      })
+      .finally(() => {
+        if (!cancelled) setDataLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // ML scoring pipeline — runs whenever active alerts change
@@ -1968,34 +2400,87 @@ export default function App() {
     const topEntry = ranked[0]
     const topAlert = topEntry ? live.find(a => a.id === Number(topEntry[0])) : live[0]
 
-    const prompt = `You are UNILOG, a supply chain intelligence system for Indian maritime logistics.
-
-Active disruptions (${live.length} events):
-${live.map(a => `- [${a.severity.toUpperCase()}] ${a.type} at ${a.location}: ${a.summary}`).join("\n")}
-
-${topAlert && topEntry ? `Highest ML risk: "${topAlert.location}" scored ${topEntry[1].score}/100 (${topEntry[1].confidence}% confidence).` : ""}
-
-Context: India routes 95% of trade by sea. Red Sea crisis → 8× freight spike. Exports contracted 9.3% Aug 2024.
-
-Write 2–3 concise operational sentences for Indian freight operators. Be specific and direct.`
-
     try {
-      const text = await callClaude(prompt)
+      const text = await callRiskAnalysis({
+        alerts: live.map(a => ({ severity: a.severity, type: a.type, location: a.location, summary: a.summary })),
+        top_location: topAlert && topEntry ? topAlert.location : undefined,
+        top_score: topAlert && topEntry ? topEntry[1].score : undefined,
+        top_confidence: topAlert && topEntry ? topEntry[1].confidence : undefined,
+      })
       setAiAnalysis(text)
     } catch (e: any) {
-      if (e.message === "NO_KEY") {
-        setAiAnalysis("No API key configured. Add VITE_ANTHROPIC_API_KEY to enable live Claude AI analysis.")
-      } else {
-        setAiAnalysis(`Error: ${e.message}`)
-      }
+      setAiAnalysis(`Error: ${e.message}`)
     }
     setAiLoading(false)
   }
 
-  const dismissAlert = (id: number) => setAlerts(prev => prev.map(a => (a.id === id ? { ...a, dismissed: true } : a)))
-  const toggleWatch = (id: string) => setRoutes(prev => prev.map(r => (r.id === id ? { ...r, watched: !r.watched } : r)))
-  const applyReroute = (id: number) => setReroutes(prev => prev.map(r => (r.id === id ? { ...r, applied: true } : r)))
-  const dismissReroute = (id: number) => setReroutes(prev => prev.map(r => (r.id === id ? { ...r, dismissed: true } : r)))
+  const dismissAlert = (id: number) => {
+    setAlerts(prev => prev.map(a => (a.id === id ? { ...a, dismissed: true } : a)))
+    dismissAlertApi(id).catch(err => console.error("Failed to dismiss alert on server:", err))
+  }
+
+  const notifyTeam = (id: number) => {
+    const alert = alerts.find(a => a.id === id)
+    if (!alert) return
+    const message = `[${alert.severity.toUpperCase()}] ${alert.type} at ${alert.location}: ${alert.summary}`
+    notifyTeamApi(id, message)
+      .then(results => {
+        const sent = results.filter(r => r.status === "sent" || r.status === "success").length
+        const simulated = results.filter(r => r.status === "simulated").length
+        const label = simulated > 0
+          ? `Notified ${sent + simulated} of ${results.length} device(s) (${simulated} simulated \u2014 demo mode).`
+          : `Notified ${sent} of ${results.length} device(s).`
+        window.alert(label)
+        dismissAlert(id)
+      })
+      .catch(err => {
+        console.error("Failed to notify team:", err)
+        window.alert("Failed to send notification. Check console for details.")
+      })
+  }
+
+  const toggleWatch = (id: string) => {
+    setRoutes(prev => {
+      const next = prev.map(r => (r.id === id ? { ...r, watched: !r.watched } : r))
+      const updated = next.find(r => r.id === id)
+      if (updated) {
+        setRouteWatchedApi(id, updated.watched).catch(err => console.error("Failed to update watch on server:", err))
+      }
+      return next
+    })
+  }
+
+  const applyReroute = (id: number) => {
+    setReroutes(prev => prev.map(r => (r.id === id ? { ...r, applied: true } : r)))
+    applyRerouteApi(id).catch(err => console.error("Failed to apply reroute on server:", err))
+  }
+
+  const dismissReroute = (id: number) => {
+    setReroutes(prev => prev.map(r => (r.id === id ? { ...r, dismissed: true } : r)))
+    dismissRerouteApi(id).catch(err => console.error("Failed to dismiss reroute on server:", err))
+  }
+
+  const generateSuggestions = async () => {
+    if (generatingReroutes) return
+    setGeneratingReroutes(true)
+    try {
+      const targets = routes.filter(r => r.risk === "critical" || r.risk === "high")
+      const results = await Promise.all(
+        targets.map(r => generateReroutesApi(r.id).catch(err => {
+          console.error(`Failed to generate reroutes for route ${r.id}:`, err)
+          return [] as Awaited<ReturnType<typeof generateReroutesApi>>
+        }))
+      )
+      const newReroutes = results.flat().map(rr => adaptReroute(rr, new Map()))
+      setReroutes(prev => {
+        const existingIds = new Set(prev.map(r => r.id))
+        const deduped = newReroutes.filter(r => !existingIds.has(r.id))
+        return [...prev, ...deduped]
+      })
+    } finally {
+      setGeneratingReroutes(false)
+    }
+  }
 
   const liveCount = alerts.filter(a => !a.dismissed).length
   const criticalCount = alerts.filter(a => !a.dismissed && a.severity === "critical").length
@@ -2157,6 +2642,21 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
               fontFamily: "DM Mono, monospace",
               cursor: "pointer",
             }}
+            onClick={() => setShowProblemStatement(true)}
+          >
+            ⚠ THE PROBLEM
+          </button>
+          <button
+            style={{
+              padding: "4px 10px",
+              background: "transparent",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              color: "var(--text-3)",
+              fontSize: 10,
+              fontFamily: "DM Mono, monospace",
+              cursor: "pointer",
+            }}
             onClick={() => setPage("settings")}
           >
             ⚙ CONFIG
@@ -2172,7 +2672,7 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
               border: "1px solid var(--border)",
             }}
           >
-            <span style={{ fontSize: 11, color: "var(--text-2)" }}>Rajesh Kumar</span>
+            <span style={{ fontSize: 11, color: "var(--text-2)" }}>Aparna Dhiraj</span>
             <div
               style={{
                 width: 22,
@@ -2184,11 +2684,112 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
                 justifyContent: "center",
               }}
             >
-              <span style={{ fontSize: 9, fontWeight: 700, color: "#fff" }}>RK</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#fff" }}>AD</span>
             </div>
           </div>
         </div>
       </header>
+
+      {showProblemStatement && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 500,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+          }}
+          onClick={() => setShowProblemStatement(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: 720,
+              width: "100%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              background: "var(--panel)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "24px 28px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <div
+                  className="mono"
+                  style={{ fontSize: 10, letterSpacing: "0.12em", color: "#f59e0b", marginBottom: 4 }}
+                >
+                  AI FOR CLIMATE CHANGE
+                </div>
+                <h2 style={{ margin: 0, fontSize: 20, color: "var(--text)" }}>
+                  Why UNILOG Exists
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowProblemStatement(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-3)",
+                  fontSize: 18,
+                  cursor: "pointer",
+                  lineHeight: 1,
+                  padding: 4,
+                }}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: 13, lineHeight: 1.65, color: "var(--text-2)", margin: "0 0 14px" }}>
+              Climate change is making global shipping increasingly volatile: warming oceans and
+              shifting storm patterns are driving more frequent extreme-weather disruptions,
+              layered on top of chokepoint conflicts and geopolitical shocks. India is dangerously
+              exposed — 95% of its trade moves by sea through a handful of chokepoints (the Red
+              Sea, Suez, and the Strait of Malacca), so a single storm, blockage, or conflict can
+              disrupt the country's exports all at once. When the Red Sea crisis hit,
+              Kolkata–Rotterdam freight rates jumped from $500 to $4,000, and India's exports fell
+              9.3% in a single month.
+            </p>
+
+            <p style={{ fontSize: 13, lineHeight: 1.65, color: "var(--text-2)", margin: 0 }}>
+              The core failure is timing: logistics teams track disruptions manually, scanning
+              news, weather sites, and government advisories — and by the time a disruption is
+              noticed, shipments are already committed to an at-risk route. This causes delays,
+              demurrage charges, spoiled cargo, and reactive last-minute reroutes that burn far
+              more fuel than a planned one. No affordable, real-time, AI-driven tool exists today
+              that connects a "world event" to a "specific shipment's risk" to an "actionable,
+              lower-emission alternative" — leaving India's exporters, especially MSMEs,
+              structurally unprepared for a climate that is only getting less predictable.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {(dataLoading || dataError) && (
+        <div
+          style={{
+            position: "fixed",
+            top: 50,
+            right: 16,
+            zIndex: 50,
+            padding: "6px 12px",
+            background: dataError ? "rgba(239,68,68,0.15)" : "rgba(0,212,255,0.1)",
+            border: `1px solid ${dataError ? "#ef444460" : "var(--primary)40"}`,
+            borderRadius: 4,
+            fontSize: 10,
+            fontFamily: "DM Mono, monospace",
+            color: dataError ? "#ef4444" : "var(--primary)",
+          }}
+        >
+          {dataError ? `Backend error: ${dataError}` : "Loading live data…"}
+        </div>
+      )}
 
       {/* Body */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
@@ -2291,6 +2892,8 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
             onToggleWatch={toggleWatch}
             onApplyReroute={applyReroute}
             onDismissReroute={dismissReroute}
+            onGenerateReroutes={generateSuggestions}
+            generatingReroutes={generatingReroutes}
             mlScores={mlScores}
             mlRunning={mlRunning}
             aiAnalysis={aiAnalysis}
@@ -2300,9 +2903,9 @@ Write 2–3 concise operational sentences for Indian freight operators. Be speci
             setExpandedMLId={setExpandedMLId}
           />
         )}
-        {page === "map" && <LiveMapPage />}
+        {page === "map" && <LiveMapPage alerts={alerts} />}
         {page === "planner" && <RoutePlannerPage />}
-        {page === "alerts" && <AlertsPage alerts={alerts} onDismiss={dismissAlert} />}
+        {page === "alerts" && <AlertsPage alerts={alerts} onDismiss={dismissAlert} onNotify={notifyTeam} />}
         {page === "analytics" && <AnalyticsPage />}
         {page === "settings" && <SettingsPage />}
       </div>

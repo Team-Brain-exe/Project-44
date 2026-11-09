@@ -2,14 +2,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.models import alert, route, reroute, port, user_device  # noqa: F401
-from app.routers import ml, alerts, routes
-
+from app.models import alert, route, reroute, port, user_device, notification, simulation  # noqa: F401
+from app.routers import ml, alerts, routes, reroutes, ports, user_devices, notifications, ai, aircraft
+from app.routers import carbon, simulation as simulation_router
 app = FastAPI(title="Project44 API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:8443"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,11 +26,11 @@ def health_check():
 app.include_router(ml.router)
 app.include_router(alerts.router)
 app.include_router(routes.router)
-
-# Uncomment each pair below as that router is built and tested:
-# from app.routers import reroutes
-# app.include_router(reroutes.router)
-# from app.routers import ports
-# app.include_router(ports.router)
-# from app.routers import notifications
-# app.include_router(notifications.router)
+app.include_router(reroutes.router)
+app.include_router(ports.router)
+app.include_router(user_devices.router)
+app.include_router(notifications.router)
+app.include_router(ai.router)
+app.include_router(aircraft.router)
+app.include_router(carbon.router)
+app.include_router(simulation_router.router)

@@ -59,3 +59,62 @@ html, body, #root {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+
+/* ─── Weather hazard visuals (rain / storm+thunder / water-level rise) ─── */
+
+@keyframes weather-rain-drop {
+  0% { transform: translateY(-2px); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateY(4px); opacity: 0; }
+}
+.weather-rain-drop {
+  animation: weather-rain-drop 1.1s ease-in infinite;
+  transform-origin: center;
+}
+
+@keyframes weather-lightning-flash {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  94% { opacity: 0.15; }
+  96% { opacity: 1; }
+  98% { opacity: 0.25; }
+}
+.weather-lightning {
+  animation: weather-lightning-flash 2.4s infinite;
+  transform-origin: center;
+}
+
+@keyframes weather-rise {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+.weather-rise { animation: weather-rise 2s ease-in-out infinite; }
+
+/* Leaflet divIcon markers for map-level weather hazards */
+.weather-marker { background: transparent; border: none; }
+.weather-marker-wrap { position: relative; width: 28px; height: 28px; }
+.weather-marker-core {
+  position: absolute; top: 9px; left: 9px; width: 10px; height: 10px;
+  border-radius: 50%; opacity: 0.95;
+}
+.weather-marker-flash { animation: weather-lightning-flash 2.4s infinite; }
+.weather-marker-bolt {
+  position: absolute; top: -5px; left: 8px; font-size: 13px; color: #fbbf24;
+  animation: weather-lightning-flash 2.4s infinite;
+  text-shadow: 0 0 4px #fbbf24;
+}
+.weather-marker-ring {
+  position: absolute; top: 4px; left: 4px; width: 20px; height: 20px;
+  border: 1.5px solid; border-radius: 50%; opacity: 0;
+  animation: pulse-ring 2.2s ease-out infinite;
+}
+.weather-marker-ring-delay { animation-delay: 1.1s; }
+.weather-marker-rain {
+  position: absolute; top: 2px; left: 2px; width: 24px; height: 24px;
+  border: 1.5px dashed; border-radius: 50%; opacity: 0.5;
+  animation: weather-rain-spin 6s linear infinite;
+}
+@keyframes weather-rain-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

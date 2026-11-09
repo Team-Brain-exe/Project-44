@@ -9,6 +9,9 @@ class AlertBase(BaseModel):
     severity: int
     summary: str
     age_min: int
+    is_forecast: bool = False
+    eta_hours: int | None = None
+    causal_chain: str | None = None
     dismissed: bool = False
 
 
@@ -25,3 +28,15 @@ class AlertOut(AlertBase):
 
 class AlertUpdate(BaseModel):
     dismissed: bool | None = None
+
+
+
+class AlertDetailOut(AlertOut):
+    """AlertOut plus derived fields. Existing keys are unchanged (additive only)."""
+
+    route_id: int | None = None
+    event_type: str | None = None
+    status: str = "active"  # active | acknowledged | dismissed
+    simulated: bool = False
+    created_at: str | None = None
+    acknowledged_at: str | None = None

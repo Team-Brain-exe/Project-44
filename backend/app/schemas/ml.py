@@ -14,5 +14,5 @@ class MLPredictRequest(BaseModel):
 
 class MLScoreOut(BaseModel):
     score: float
-    confidence: float
+    confidence: float | None = None
     features: dict

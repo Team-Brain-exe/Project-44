@@ -19,8 +19,21 @@ import {
   useAircraft,
   useRiskCorridors,
 } from "../hooks/useLiveData";
+import { WeatherHazardMarkers, WeatherIcon, weatherEventsFromAlerts, type WeatherEvent } from "../weather";
+
+const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY as string | undefined;
 
 type Severity = "critical" | "high" | "medium" | "low";
+
+// Minimal shape LiveMapCanvas/LiveMapPage need from an alert to plot weather
+// hazards — matches (and is satisfied by) App.tsx's AlertEvent.
+type AlertLike = {
+  id: number
+  type: string
+  summary: string
+  location: string
+  dismissed?: boolean
+}
 
 function buildGraticule(): LatLngExpression[][] {
   const lines: LatLngExpression[][] = [];
@@ -96,7 +109,7 @@ function getDemoReplaySeverity(
   return corridor.severity;
 }
 
-export function LiveMapCanvas() {
+export function LiveMapCanvas({ alerts = [] }: { alerts?: AlertLike[] }) {
   const [replayDate, setReplayDate] = useState(() => new Date());
   const { data: vessels, loading: vesselsLoading } = useVessels();
   const {
@@ -109,6 +122,7 @@ export function LiveMapCanvas() {
     useRiskCorridors();
 
   const graticule = useMemo(buildGraticule, []);
+  const weatherEvents: WeatherEvent[] = useMemo(() => weatherEventsFromAlerts(alerts), [alerts]);
 
   return (
     <div
@@ -300,6 +314,18 @@ export function LiveMapCanvas() {
         >
           ● AIRCRAFT {aircraft.length}
         </span>
+
+        {weatherEvents.length > 0 && (
+          <span
+            className="mono"
+            style={{
+              fontSize: 8,
+              color: "#f59e0b",
+            }}
+          >
+            ⚡ WEATHER {weatherEvents.length}
+          </span>
+        )}
       </div>
 
       <ReplayControls
@@ -353,8 +379,6 @@ export function LiveMapCanvas() {
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; OpenStreetMap contributors'
         />
-
-        {/* Graticule */}
         {graticule.map((line, i) => (
           <Polyline
             key={`grid-${i}`}
@@ -398,6 +422,10 @@ export function LiveMapCanvas() {
             </Polyline>
           );
         })}
+
+        {/* Weather hazards — animated rain / storm+thunder / water-level-rise
+            markers at the affected port or strait, derived from live alerts */}
+        <WeatherHazardMarkers events={weatherEvents} />
 
         {/* Live vessels */}
         {vessels.map((vessel) => (
@@ -479,9 +507,10 @@ export function LiveMapCanvas() {
  * Full Live Map page: LiveMapCanvas plus the right-side alert panel.
  * Unchanged in structure/behavior from before the refactor.
  */
-export default function MapPage() {
+export default function MapPage({ alerts = [] }: { alerts?: AlertLike[] }) {
   const { data: vessels } = useVessels();
   const { data: aircraft } = useAircraft();
+  const weatherEvents: WeatherEvent[] = useMemo(() => weatherEventsFromAlerts(alerts), [alerts]);
 
   return (
     <div
@@ -504,7 +533,7 @@ export default function MapPage() {
           overflow: "hidden",
         }}
       >
-        <LiveMapCanvas />
+        <LiveMapCanvas alerts={alerts} />
       </div>
 
       {/* RIGHT ALERT PANEL */}
@@ -531,6 +560,29 @@ export default function MapPage() {
         >
           Active Events
         </div>
+
+        {/* Weather hazards — ocean & air conditions currently live on the map */}
+        {weatherEvents.length > 0 && (
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
+            <div
+              className="mono"
+              style={{ fontSize: 8, color: "var(--text-3)", marginBottom: 8, letterSpacing: "0.08em" }}
+            >
+              WEATHER HAZARDS
+            </div>
+            {weatherEvents.map(ev => (
+              <div key={`we-${ev.id}`} style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 8 }}>
+                <WeatherIcon kind={ev.kind} size={13} />
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 600 }}>{ev.location}</div>
+                  <div className="mono" style={{ fontSize: 8, color: "var(--text-3)" }}>
+                    {ev.label}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Feed summary */}
         <div
