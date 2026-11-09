@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.models import alert, route, reroute, port, user_device, notification  # noqa: F401
+from app.models import alert, route, reroute, port, user_device, notification, simulation  # noqa: F401
 from app.routers import ml, alerts, routes, reroutes, ports, user_devices, notifications, ai, aircraft
-from app.routers import carbon
+from app.routers import carbon, simulation as simulation_router
 app = FastAPI(title="Project44 API")
 
 app.add_middleware(
@@ -33,3 +33,4 @@ app.include_router(notifications.router)
 app.include_router(ai.router)
 app.include_router(aircraft.router)
 app.include_router(carbon.router)
+app.include_router(simulation_router.router)
