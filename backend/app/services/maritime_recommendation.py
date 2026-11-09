@@ -4,10 +4,14 @@ from app.services.carbon import estimate_maritime_carbon
 from app.services.route_recommendation import MAX_ACCEPTABLE_RISK
 
 
-def recommend_maritime_routes(routes: list[dict]) -> dict:
+def recommend_maritime_routes(
+    routes: list[dict],
+    simulated_risks: dict[str, float] | None = None,
+) -> dict:
     if not routes:
         raise ValueError("At least one route is required")
 
+    simulated_risks = simulated_risks or {}
     results = []
 
     for route in routes:
@@ -19,11 +23,23 @@ def recommend_maritime_routes(routes: list[dict]) -> dict:
             fuel_tonnes_per_day=route["fuel_tonnes_per_day"],
         )
 
-        risk_score = ml_result["score"]
+        ml_risk_score = ml_result["score"]
+        simulated_risk = simulated_risks.get(str(route["route_id"]))
+        risk_score = (
+            simulated_risk
+            if simulated_risk is not None
+            else ml_risk_score
+        )
 
         results.append({
             "route_id": route["route_id"],
             "risk_score": risk_score,
+            "ml_risk_score": ml_risk_score,
+            "risk_source": (
+                "simulated_climate_event"
+                if simulated_risk is not None
+                else "ml_prediction"
+            ),
             "ml_confidence": ml_result["confidence"],
             "distance_nm": carbon.distance_nm,
             "speed_knots": carbon.speed_knots,
