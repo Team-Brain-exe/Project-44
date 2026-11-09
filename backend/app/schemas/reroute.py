@@ -5,9 +5,9 @@ class RerouteBase(BaseModel):
     original_route_id: int | None = None
     alt: str
     via: str
-    extra_days: float
-    extra_cost: float
-    extra_co2_tonnes: float = 0.0
+    extra_days: float | None
+    extra_cost: float | None
+    extra_co2_tonnes: float | None = 0.0
     confidence: float | None = None
     reason: str
     applied: bool = False

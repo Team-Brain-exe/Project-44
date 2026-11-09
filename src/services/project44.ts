@@ -39,9 +39,9 @@ export type BackendReroute = {
   original_route_id: number | null;
   alt: string;
   via: string;
-  extra_days: number;
-  extra_cost: number;
-  extra_co2_tonnes: number;
+  extra_days: number | null;
+  extra_cost: number | null;
+  extra_co2_tonnes: number | null;
   confidence: number; // 0-1
   reason: string;
   applied: boolean;
@@ -85,10 +85,10 @@ export type FrontendReroute = {
   original: string;
   alt: string;
   via: string;
-  extraDays: number;
+  extraDays: number | null;
   extraCost: string;
   extraCO2: string;
-  confidence: number;
+  confidence: number | null;
   reason: string;
   applied?: boolean;
   dismissed?: boolean;
@@ -159,10 +159,9 @@ export function adaptReroute(
     alt: rr.alt,
     via: rr.via,
     extraDays: rr.extra_days,
-    extraCost: `+$${rr.extra_cost.toLocaleString()}`,
-    extraCO2: `+${rr.extra_co2_tonnes.toLocaleString()}t CO\u2082`,
-    confidence: Math.round(rr.confidence * 100),
-    reason: rr.reason,
+    extraCost: rr.extra_cost == null ? "N/A" : `+$${rr.extra_cost.toLocaleString()}`,
+    extraCO2: rr.extra_co2_tonnes == null ? "N/A" : `+${rr.extra_co2_tonnes.toLocaleString()}t CO\u2082`,
+    confidence: rr.confidence == null ? null : Math.round(rr.confidence * 100),    reason: rr.reason,
     applied: rr.applied,
     dismissed: rr.dismissed,
   };

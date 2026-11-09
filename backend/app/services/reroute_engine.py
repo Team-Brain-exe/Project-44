@@ -68,21 +68,25 @@ def _top_feature(features: dict) -> str:
     return max(features, key=lambda name: features.get(name, 0) * weights.get(name, 1))
 
 
+# Curated demonstration alternatives. These are candidate corridors,
+# not verified vessel itineraries or navigational safety guarantees.
+DEMO_ALTERNATIVES = {
+    ("Shanghai", "Rotterdam"): ("Cape of Good Hope",),
+    ("Mumbai", "Jebel Ali"): (),
+    ("Singapore", "Los Angeles"): ("North Pacific direct corridor",),
+    ("Shanghai", "Singapore"): ("Lombok Strait",),
+    ("Rotterdam", "Los Angeles"): (),
+}
+
+
 def _candidate_ports(db: Session, route: Route) -> list[Port]:
-    """
-    Alternate chokepoints (canal/strait) not already used as this route's
-    `via`, and not the route's own origin/destination (those aren't
-    alternates, they're the endpoints). Prefers chokepoints over generic
-    ports since those are the meaningful detour options.
-    """
-    excluded_names = [route.via, route.origin, route.destination]
-    query = db.query(Port).filter(Port.name.notin_(excluded_names))
-
-    chokepoints = query.filter(Port.type.in_(CHOKEPOINT_TYPES)).limit(5).all()
-    if chokepoints:
-        return chokepoints
-
-    return query.limit(5).all()
+    """Return only curated demo corridors for this origin/destination."""
+    names = DEMO_ALTERNATIVES.get((route.origin, route.destination), ())
+    return [
+        Port(name=name, type="corridor")
+        for name in names
+        if name != route.via
+    ]
 
 
 def generate_reroute_candidates(db: Session, route: Route) -> list[dict]:
@@ -105,7 +109,11 @@ def generate_reroute_candidates(db: Session, route: Route) -> list[dict]:
 
     candidates = []
     for port in _candidate_ports(db, route):
-        profile = DETOUR_PROFILES.get(port.type, DETOUR_PROFILES["port"])
+        profile = (
+            {"extra_days": None, "extra_cost": None}
+            if port.type == "corridor"
+            else DETOUR_PROFILES.get(port.type, DETOUR_PROFILES["port"])
+        )
         candidates.append(
             {
                 "original_route_id": route.id,
@@ -113,7 +121,10 @@ def generate_reroute_candidates(db: Session, route: Route) -> list[dict]:
                 "via": port.name,
                 "extra_days": profile["extra_days"],
                 "extra_cost": profile["extra_cost"],
-                "extra_co2_tonnes": _estimate_extra_co2_tonnes(profile["extra_days"]),
+                "extra_co2_tonnes": (
+                    None if profile["extra_days"] is None
+                    else _estimate_extra_co2_tonnes(profile["extra_days"])
+                ),
                 "confidence": risk_result["confidence"],
                 "reason": reason,
                 "applied": False,
@@ -121,7 +132,11 @@ def generate_reroute_candidates(db: Session, route: Route) -> list[dict]:
             }
         )
 
-    candidates.sort(key=lambda c: (c["extra_days"], c["extra_cost"]))
+    candidates.sort(key=lambda c: (
+        c["extra_days"] is None,
+        c["extra_days"] if c["extra_days"] is not None else float("inf"),
+        c["extra_cost"] if c["extra_cost"] is not None else float("inf"),
+    ))
     return candidates
 
 
@@ -136,6 +151,18 @@ def create_reroute_suggestions(db: Session, route: Route, persist: bool = True) 
 
     saved = []
     for c in candidates:
+        existing = (
+            db.query(Reroute)
+            .filter(
+                Reroute.original_route_id == c["original_route_id"],
+                Reroute.via == c["via"],
+            )
+            .first()
+        )
+        if existing:
+            saved.append(existing)
+            continue
+
         reroute = Reroute(**c)
         db.add(reroute)
         db.commit()

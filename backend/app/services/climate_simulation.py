@@ -92,7 +92,12 @@ def _recommendation(db: Session, route: Route) -> dict:
     ]
     best = suggestions[0]
     return {
-        "action": f"Consider rerouting via {best.via} (+{best.extra_days:g} days).",
+        "action": (
+            f"Review demonstration corridor via {best.via} "
+            "(additional transit time not estimated)."
+            if best.extra_days is None
+            else f"Consider rerouting via {best.via} (+{best.extra_days:g} days)."
+        ),
         "reason": best.reason,
         "alternatives": alternatives,
     }
