@@ -5,6 +5,7 @@ from typing import List
 from app.services.carbon import estimate_carbon, estimate_maritime_carbon
 from app.schemas.ml import MLPredictRequest
 from app.services.route_recommendation import recommend_routes
+from app.services.maritime_recommendation import recommend_maritime_routes
 
 router = APIRouter(prefix="/carbon", tags=["Carbon Emissions"])
 
@@ -104,3 +105,24 @@ def compare_maritime_routes(request: MaritimeCompareRequest):
         "emission_unit": "tonnes CO2",
         "method": "Illustrative tank-to-wake HFO emissions estimate",
     }
+
+class MaritimeRecommendRouteInput(BaseModel):
+    route_id: str
+    distance_nm: float = Field(ge=0)
+    speed_knots: float = Field(gt=0)
+    fuel_tonnes_per_day: float = Field(gt=0)
+    ml_features: MLPredictRequest
+
+
+class MaritimeRecommendRequest(BaseModel):
+    routes: List[MaritimeRecommendRouteInput] = Field(min_length=1)
+
+
+@router.post("/maritime/recommend")
+def recommend_maritime_routes_api(request: MaritimeRecommendRequest):
+    route_data = [
+        route.model_dump()
+        for route in request.routes
+    ]
+
+    return recommend_maritime_routes(route_data)
