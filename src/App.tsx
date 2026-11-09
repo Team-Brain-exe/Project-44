@@ -12,6 +12,13 @@ import {
   BACKEND_URL,
 } from "./services/project44"
 import { WeatherBadge, classifyWeather } from "./weather"
+import {
+  simulateCyclone,
+  resetClimateSimulation,
+  getSimulationStatus,
+  getMaritimeRecommendation,
+  type MaritimeRecommendation,
+} from "./services/climateAI"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Severity = "critical" | "high" | "medium" | "low"
@@ -911,6 +918,101 @@ function RoutePlannerPage() {
   const [cargo, setCargo] = useState("General Cargo")
   const [planned, setPlanned] = useState(false)
   const [selectedRoute, setSelectedRoute] = useState<number | null>(null)
+  // Live Climate AI integration
+  const [aiRecommendation, setAiRecommendation] =
+    useState<MaritimeRecommendation | null>(null)
+  const [climateLoading, setClimateLoading] = useState(false)
+  const [climateError, setClimateError] = useState<string | null>(null)
+  const [cycloneActive, setCycloneActive] = useState(false)
+  const [riskBefore, setRiskBefore] = useState<number | null>(null)
+  const [riskAfter, setRiskAfter] = useState<number | null>(null)
+
+
+
+  const demoMaritimeRoutes = [
+    {
+      route_id: "3",
+      distance_nm: 8500,
+      speed_knots: 18,
+      fuel_tonnes_per_day: 40,
+      ml_features: {
+        severity: 1,
+        age_hours: 24,
+        route_overlap: 0.1,
+        is_chokepoint: 0,
+        freight_value_musd: 15,
+        vessel_count_nearby: 1,
+        weather_severity: 0,
+        port_congestion_pct: 15,
+      },
+    },
+    {
+      route_id: "alternative-A",
+      distance_nm: 9000,
+      speed_knots: 18,
+      fuel_tonnes_per_day: 40,
+      ml_features: {
+        severity: 1,
+        age_hours: 24,
+        route_overlap: 0.1,
+        is_chokepoint: 0,
+        freight_value_musd: 15,
+        vessel_count_nearby: 1,
+        weather_severity: 0,
+        port_congestion_pct: 15,
+      },
+    },
+  ]
+
+  const calculateAIRoutes = async () => {
+    setClimateLoading(true)
+    setClimateError(null)
+    try {
+      const result = await getMaritimeRecommendation(demoMaritimeRoutes)
+      setAiRecommendation(result)
+      const status = await getSimulationStatus()
+      const event = status.active_events.find(e => e.route_id === 3)
+      setCycloneActive(Boolean(event))
+      setRiskBefore(event?.risk_before ?? null)
+      setRiskAfter(event?.risk_after ?? null)
+    } catch (error) {
+      setClimateError(error instanceof Error ? error.message : "Request failed")
+    } finally {
+      setClimateLoading(false)
+    }
+  }
+
+  const triggerCyclone = async () => {
+    setClimateLoading(true)
+    setClimateError(null)
+    try {
+      const simulation = await simulateCyclone(3)
+      setCycloneActive(true)
+      setRiskBefore(simulation.risk_before.score)
+      setRiskAfter(simulation.risk_after.score)
+      setAiRecommendation(await getMaritimeRecommendation(demoMaritimeRoutes))
+    } catch (error) {
+      setClimateError(error instanceof Error ? error.message : "Simulation failed")
+    } finally {
+      setClimateLoading(false)
+    }
+  }
+
+  const resetCyclone = async () => {
+    setClimateLoading(true)
+    setClimateError(null)
+    try {
+      await resetClimateSimulation()
+      setCycloneActive(false)
+      setRiskBefore(null)
+      setRiskAfter(null)
+      setAiRecommendation(await getMaritimeRecommendation(demoMaritimeRoutes))
+    } catch (error) {
+      setClimateError(error instanceof Error ? error.message : "Reset failed")
+    } finally {
+      setClimateLoading(false)
+    }
+  }
 
   const ports = ["JNPT", "Mundra", "Chennai", "Kolkata", "Cochin"]
   const destinations = ["Rotterdam", "Hamburg", "Shanghai", "Singapore", "Los Angeles", "Jeddah"]
@@ -981,6 +1083,119 @@ function RoutePlannerPage() {
   return (
     <div style={{ padding: 24, overflowY: "auto", height: "100%" }}>
       <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20 }}>Route Planner</h2>
+
+      <div style={{
+        background: "var(--panel)",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: 18,
+        marginBottom: 20,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+          LIVE CLIMATE AI DEMO
+        </div>
+        <p style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 14 }}>
+          Singapore → Los Angeles (Route 3) versus a hypothetical alternative.
+          Prototype ML risk and estimated maritime CO₂ using demo inputs.
+          Climate events are simulated, not live weather.
+        </p>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          <Btn onClick={calculateAIRoutes}>
+            CALCULATE AI ROUTES
+          </Btn>
+          <Btn onClick={triggerCyclone}>
+            SIMULATE CYCLONE
+          </Btn>
+          <Btn onClick={resetCyclone}>
+            RESET SIMULATION
+          </Btn>
+        </div>
+
+        {climateLoading && (
+          <p style={{ fontSize: 11 }}>Processing climate AI request...</p>
+        )}
+
+        {climateError && (
+          <p role="alert" style={{ fontSize: 11, color: "#ef4444" }}>
+            {climateError}
+          </p>
+        )}
+
+        <div style={{ fontSize: 11, marginBottom: 12 }}>
+          Simulation: {cycloneActive ? "ACTIVE — CYCLONE" : "INACTIVE"}
+          {riskBefore !== null && riskAfter !== null && (
+            <span style={{ marginLeft: 12 }}>
+              Risk: {riskBefore.toFixed(1)} → {riskAfter.toFixed(1)}
+            </span>
+          )}
+        </div>
+
+        {aiRecommendation && (
+          <div>
+            <div style={{
+              fontSize: 12,
+              fontWeight: 700,
+              marginBottom: 10,
+              color: "#22c55e",
+            }}>
+              Recommended: {aiRecommendation.recommended_route ?? "Manual review required"}
+            </div>
+
+            <div style={{ display: "grid", gap: 10 }}>
+              {aiRecommendation.routes.map(route => (
+                <div key={route.route_id} style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  padding: 12,
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>
+                    {route.route_id === "3"
+                      ? "Route 3 — Singapore to Los Angeles"
+                      : "Alternative A — Hypothetical comparison"}
+                  </div>
+
+                  <div style={{
+                    display: "flex",
+                    gap: 18,
+                    flexWrap: "wrap",
+                    fontSize: 11,
+                  }}>
+                    <span>Risk: {route.risk_score.toFixed(1)}/100</span>
+                    <span>CO₂: {route.co2_tonnes.toFixed(1)} tonnes</span>
+                    <span>Voyage: {route.voyage_hours.toFixed(1)} hours</span>
+                    <span>
+                      {route.safety_status === "eligible"
+                        ? "Eligible"
+                        : "High risk"}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    fontSize: 10,
+                    color: "var(--text-3)",
+                    marginTop: 8,
+                  }}>
+                    Source: {route.risk_source === "simulated_climate_event"
+                      ? "Simulated climate event"
+                      : "ML prediction"}
+                  </div>
+                  <p style={{ fontSize: 10, marginTop: 6 }}>
+                    {route.explanation}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {aiRecommendation.warning && (
+              <p style={{ color: "#f59e0b", fontSize: 11, marginTop: 10 }}>
+                {aiRecommendation.warning}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {[
