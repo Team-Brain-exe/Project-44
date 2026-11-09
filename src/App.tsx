@@ -21,6 +21,10 @@ import {
   type BackendRoute,
   type MaritimeRecommendation,
 } from "./services/climateAI"
+
+import { useMaritimeState, riskBand } from "./state/maritimeStore"
+import ClimateImpactAnalytics from "./components/ClimateImpactAnalytics"
+import MaritimeComparison from "./components/MaritimeComparison"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Severity = "critical" | "high" | "medium" | "low"
@@ -642,6 +646,8 @@ function AnalyticsPage() {
         </div>
       </div>
 
+      <ClimateImpactAnalytics />
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         {/* Bar chart */}
         <div style={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: 16 }}>
@@ -1056,7 +1062,8 @@ function RoutePlannerPage() {
   }, [backendRoutes, from, to])
   const cargoTypes = ["General Cargo", "Basmati Rice", "Petroleum", "Textiles", "Chemicals", "Machinery"]
 
-  const options = [
+  const maritime = useMaritimeState()
+  const baseOptions = [
     {
       route: "via Suez Canal",
       days: 22,
@@ -1082,6 +1089,18 @@ function RoutePlannerPage() {
       note: "SAFE — Optimized bunkering en route",
     },
   ]
+
+  // Use validated maritime API scores when available.
+  const options = baseOptions.map(o => {
+    const scored = maritime.data?.routes.find(r => r.route_id === o.route)
+    if (!scored || typeof scored.risk_score !== "number" || !Number.isFinite(scored.risk_score)) return o
+    const band = riskBand(scored.risk_score)
+    return {
+      ...o,
+      riskScore: Math.round(scored.risk_score),
+      risk: (band === "high" ? "high" : band) as Severity,
+    }
+  })
 
   const exportRoutePdf = (opt: typeof options[number]) => {
     const w = window.open("", "_blank")
@@ -1266,7 +1285,7 @@ function RoutePlannerPage() {
         </div>
       </section>
 
-      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
+      <div className="planner-grid" style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {[
             { label: "Origin Port", value: from, setter: setFrom, options: ports },
@@ -1415,6 +1434,7 @@ function RoutePlannerPage() {
           </div>
         )}
       </div>
+      {planned && <MaritimeComparison from={from} to={to} />}
     </div>
   )
 }
@@ -2323,7 +2343,7 @@ export default function App() {
   const [generatingReroutes, setGeneratingReroutes] = useState(false)
 
   // Sidebar collapse state
-  const [navCollapsed, setNavCollapsed] = useState(false)
+  const [navCollapsed, setNavCollapsed] = useState(() => window.innerWidth < 700)
   const [showProblemStatement, setShowProblemStatement] = useState(false)
 
   // Gemini AI state

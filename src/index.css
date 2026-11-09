@@ -118,3 +118,46 @@ html, body, #root {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+
+/* Maritime comparison, climate impact and explainable AI */
+.mc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+  gap: 12px;
+}
+.mc-grid-wide {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 20px;
+}
+.mc-grid-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 12px;
+}
+.mc-grid-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+}
+.mc-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+@media (max-width: 380px) {
+  .mc-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 800px) {
+  .planner-grid { grid-template-columns: 1fr !important; }
+}
+.mc-btn:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-shimmer { animation: none !important; }
+}
