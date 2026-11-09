@@ -17,6 +17,8 @@ import {
   resetClimateSimulation,
   getSimulationStatus,
   getMaritimeRecommendation,
+  getAvailableRoutes,
+  type BackendRoute,
   type MaritimeRecommendation,
 } from "./services/climateAI"
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -918,6 +920,25 @@ function RoutePlannerPage() {
   const [cargo, setCargo] = useState("General Cargo")
   const [planned, setPlanned] = useState(false)
   const [selectedRoute, setSelectedRoute] = useState<number | null>(null)
+  const [backendRoutes, setBackendRoutes] = useState<BackendRoute[]>([])
+  const [routesLoading, setRoutesLoading] = useState(true)
+  const [routesError, setRoutesError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    getAvailableRoutes()
+      .then(routes => {
+        if (active) setBackendRoutes(routes)
+      })
+      .catch(error => {
+        if (active) setRoutesError(error instanceof Error ? error.message : "Failed to load routes")
+      })
+      .finally(() => {
+        if (active) setRoutesLoading(false)
+      })
+    return () => { active = false }
+  }, [])
+
   // Live Climate AI integration
   const [aiRecommendation, setAiRecommendation] =
     useState<MaritimeRecommendation | null>(null)
@@ -1014,8 +1035,25 @@ function RoutePlannerPage() {
     }
   }
 
-  const ports = ["JNPT", "Mundra", "Chennai", "Kolkata", "Cochin"]
-  const destinations = ["Rotterdam", "Hamburg", "Shanghai", "Singapore", "Los Angeles", "Jeddah"]
+  // Populate route selectors from the backend instead of illustrative port lists.
+  const ports = [...new Set(backendRoutes.map(route => route.origin))]
+  const destinations = [...new Set(
+    backendRoutes.filter(route => route.origin === from).map(route => route.destination)
+  )]
+
+  useEffect(() => {
+    if (ports.length > 0 && !ports.includes(from)) {
+      setFrom(ports[0])
+      setPlanned(false)
+    }
+  }, [backendRoutes, from])
+
+  useEffect(() => {
+    if (destinations.length > 0 && !destinations.includes(to)) {
+      setTo(destinations[0])
+      setPlanned(false)
+    }
+  }, [backendRoutes, from, to])
   const cargoTypes = ["General Cargo", "Basmati Rice", "Petroleum", "Textiles", "Chemicals", "Machinery"]
 
   const options = [
@@ -1195,6 +1233,38 @@ function RoutePlannerPage() {
           </div>
         )}
       </div>
+
+      <section style={{
+        background: "var(--panel)", border: "1px solid var(--border)",
+        borderRadius: 8, padding: 18, marginBottom: 20,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+          AVAILABLE BACKEND ROUTES
+        </div>
+        <p style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 12 }}>
+          Routes loaded from the database. The planner below and the climate AI comparison
+          remain separate demonstrations; these records do not contain maritime distances
+          or vessel fuel data required for carbon estimates.
+        </p>
+        {routesLoading && <p style={{ fontSize: 11 }}>Loading routes...</p>}
+        {routesError && <p role="alert" style={{ color: "#ef4444", fontSize: 11 }}>{routesError}</p>}
+        {!routesLoading && !routesError && backendRoutes.length === 0 && (
+          <p style={{ fontSize: 11 }}>No backend routes available.</p>
+        )}
+        <div style={{ display: "grid", gap: 8 }}>
+          {backendRoutes.map(route => (
+            <div key={route.id} style={{
+              padding: 10, borderRadius: 6, border: "1px solid var(--border)",
+              fontSize: 11, display: "flex", flexWrap: "wrap", gap: 12,
+            }}>
+              <strong>#{route.id} · {route.origin} → {route.destination}</strong>
+              <span>Via {route.via}</span>
+              <span>Risk: {route.risk}</span>
+              <span>Status: {route.status}</span>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 20 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

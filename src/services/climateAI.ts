@@ -104,3 +104,19 @@ export function getMaritimeRecommendation(routes: MaritimeRouteInput[]) {
     { routes }
   )
 }
+export type BackendRoute = {
+  id: number
+  origin: string
+  destination: string
+  via: string
+  risk: string
+  score: number
+  status: string
+  freight: number
+  delay: number
+  watched: boolean
+}
+
+export function getAvailableRoutes() {
+  return api<BackendRoute[]>("/routes", "GET")
+}
