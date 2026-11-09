@@ -59,10 +59,10 @@ type Reroute = {
   original: string
   alt: string
   via: string
-  extraDays: number
+  extraDays: number | null
   extraCost: string
   extraCO2: string
-  confidence: number
+  confidence: number | null
   reason: string
   applied?: boolean
   dismissed?: boolean
@@ -2065,7 +2065,7 @@ function DashboardView({
                     {rr.applied ? "✓ APPLIED" : "AI SUGGESTION"}
                   </span>
                   <span className="mono" style={{ marginLeft: "auto", fontSize: 9, color: "#22c55e" }}>
-                    {rr.confidence}% conf.
+                    {rr.confidence == null ? "N/A" : `${rr.confidence}%`} conf.
                   </span>
                 </div>
                 <div className="mono" style={{ fontSize: 9, color: "var(--text-3)", marginBottom: 2, textDecoration: "line-through" }}>
@@ -2076,7 +2076,7 @@ function DashboardView({
                 </div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                   <span className="mono" style={{ fontSize: 9, color: "#f59e0b" }}>
-                    +{rr.extraDays}d
+                    {rr.extraDays == null ? "N/A" : `+${rr.extraDays}d`}
                   </span>
                   <span className="mono" style={{ fontSize: 9, color: "#f59e0b" }}>
                     {rr.extraCost}

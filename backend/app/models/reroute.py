@@ -11,7 +11,7 @@ class Reroute(Base):
     via = Column(String)
     extra_days = Column(Float)
     extra_cost = Column(Float)
-    extra_co2_tonnes = Column(Float, default=0.0)
+    extra_co2_tonnes = Column(Float, nullable=True)
     confidence = Column(Float)
     reason = Column(String)
     applied = Column(Boolean, default=False)
