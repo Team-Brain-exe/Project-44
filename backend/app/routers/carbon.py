@@ -1,11 +1,15 @@
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from typing import List
 from app.services.carbon import estimate_carbon, estimate_maritime_carbon
 from app.schemas.ml import MLPredictRequest
 from app.services.route_recommendation import recommend_routes
 from app.services.maritime_recommendation import recommend_maritime_routes
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models.route import Route
+from app.models.simulation import SimulationEvent
 
 router = APIRouter(prefix="/carbon", tags=["Carbon Emissions"])
 
@@ -119,10 +123,38 @@ class MaritimeRecommendRequest(BaseModel):
 
 
 @router.post("/maritime/recommend")
-def recommend_maritime_routes_api(request: MaritimeRecommendRequest):
-    route_data = [
-        route.model_dump()
-        for route in request.routes
-    ]
+def recommend_maritime_routes_api(
+    request: MaritimeRecommendRequest,
+    db: Session = Depends(get_db),
+):
+    route_data = [route.model_dump() for route in request.routes]
 
-    return recommend_maritime_routes(route_data)
+    simulated_risks = {}
+
+    for route in request.routes:
+        route_id = route.route_id
+
+        if not route_id.isdecimal():
+            continue
+
+        db_route_id = int(route_id)
+
+        if db.get(Route, db_route_id) is None:
+            continue
+
+        event = (
+            db.query(SimulationEvent)
+            .filter(
+                SimulationEvent.route_id == db_route_id,
+                SimulationEvent.scenario == "severe",
+            )
+            .first()
+        )
+
+        if event is not None:
+            simulated_risks[route_id] = event.risk_after
+
+    return recommend_maritime_routes(
+        route_data,
+        simulated_risks=simulated_risks,
+    )
